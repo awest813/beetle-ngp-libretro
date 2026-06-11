@@ -8,6 +8,7 @@
  */
 
 #include "dc_audio.h"
+#include "dc_settings.h"
 #include "menu.h"
 
 #include <kos.h>
@@ -22,25 +23,41 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define FB_WIDTH  160
-#define FB_HEIGHT 152
-#define SCALE     3
+#define FB_WIDTH     160
+#define FB_HEIGHT    152
 #define SCREEN_PITCH 640
-static const char *system_dir = "/sd";
-static const char *save_dir   = "/sd/ngp";
 
 static uint16_t *scaled_frame;
 static unsigned scaled_w;
 static unsigned scaled_h;
+static unsigned video_scale;
 
 static maple_device_t *controller;
 static dc_audio_stream_t *audio_stream;
 static const char *loaded_rom_path;
 static uint32_t previous_buttons;
 
+typedef enum hotkey_action
+{
+   HOTKEY_NONE = 0,
+   HOTKEY_QUIT,
+   HOTKEY_SETTINGS
+} hotkey_action_t;
+
 static void ensure_save_dir(void)
 {
-   mkdir(save_dir, 0755);
+   mkdir(dc_settings_get()->save_dir, 0755);
+}
+
+static void apply_audio_settings(void)
+{
+   const dc_settings_t *cfg = dc_settings_get();
+
+   if (!audio_stream)
+      return;
+
+   dc_audio_set_volume(audio_stream, cfg->volume);
+   dc_audio_set_enabled(audio_stream, cfg->audio_enabled);
 }
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
@@ -60,8 +77,8 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
 
    memset(scaled_frame, 0, scaled_w * scaled_h * sizeof(uint16_t));
 
-   offset_x = (scaled_w - (width * SCALE)) / 2;
-   offset_y = (scaled_h - (height * SCALE)) / 2;
+   offset_x = (scaled_w - (width * video_scale)) / 2;
+   offset_y = (scaled_h - (height * video_scale)) / 2;
 
    for (y = 0; y < height; y++)
    {
@@ -69,13 +86,13 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
       {
          uint16_t pixel = src[y * (pitch / sizeof(uint16_t)) + x];
 
-         for (sy = 0; sy < SCALE; sy++)
+         for (sy = 0; sy < video_scale; sy++)
          {
-            for (sx = 0; sx < SCALE; sx++)
+            for (sx = 0; sx < video_scale; sx++)
             {
                dst = scaled_frame
-                  + (offset_y + y * SCALE + sy) * scaled_w
-                  + (offset_x + x * SCALE + sx);
+                  + (offset_y + y * video_scale + sy) * scaled_w
+                  + (offset_x + x * video_scale + sx);
                *dst = pixel;
             }
          }
@@ -138,16 +155,18 @@ static int16_t input_state(unsigned port, unsigned device,
 
 static bool environment(unsigned cmd, void *data)
 {
+   const dc_settings_t *cfg = dc_settings_get();
+
    switch (cmd)
    {
       case RETRO_ENVIRONMENT_GET_CAN_DUPE:
          *(bool *)data = true;
          return true;
       case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-         *(const char **)data = system_dir;
+         *(const char **)data = cfg->system_dir;
          return true;
       case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
-         *(const char **)data = save_dir;
+         *(const char **)data = cfg->save_dir;
          return true;
       case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
          if (*(const enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_0RGB1555)
@@ -204,33 +223,29 @@ static uint8_t *load_rom_file(const char *path, size_t *size_out)
    return data;
 }
 
-static const char *pick_rom_path(int argc, char **argv)
+static const char *pick_rom_path(int argc, char **argv, char **menu_owned_out)
 {
-   static const char *candidates[] = {
-      NULL,
-      "/sd/ngp/rom.ngp",
-      "/sd/rom.ngp",
-      "/sd/game.ngp",
-      "/ide/ngp/rom.ngp",
-      "/ide/rom.ngp",
-      "/pc/rom.ngp",
-   };
+   menu_action_t action;
+   char *picked = NULL;
 
-   size_t i;
+   if (menu_owned_out)
+      *menu_owned_out = NULL;
 
    if (argc > 1 && argv[1] && argv[1][0])
       return argv[1];
 
-   for (i = 1; i < sizeof(candidates) / sizeof(candidates[0]); i++)
+   action = menu_main(&picked);
+   if (action == MENU_ACTION_LOAD && picked)
    {
-      FILE *probe = fopen(candidates[i], "rb");
-
-      if (probe)
-      {
-         fclose(probe);
-         return candidates[i];
-      }
+      if (menu_owned_out)
+         *menu_owned_out = picked;
+      else
+         free(picked);
+      return picked;
    }
+
+   if (picked)
+      free(picked);
 
    return NULL;
 }
@@ -240,6 +255,7 @@ static void make_state_path(char *out, size_t out_len, const char *rom_path)
    const char *base;
    char name[128];
    char *dot;
+   const dc_settings_t *cfg = dc_settings_get();
 
    base = strrchr(rom_path, '/');
    base = base ? base + 1 : rom_path;
@@ -251,7 +267,7 @@ static void make_state_path(char *out, size_t out_len, const char *rom_path)
    if (dot)
       *dot = '\0';
 
-   snprintf(out, out_len, "%s/%s.state", save_dir, name);
+   snprintf(out, out_len, "%s/%s.state", cfg->save_dir, name);
 }
 
 static bool save_state_file(const char *rom_path)
@@ -348,12 +364,12 @@ static bool load_state_file(const char *rom_path)
    return true;
 }
 
-static bool handle_hotkeys(cont_state_t *state)
+static hotkey_action_t handle_hotkeys(cont_state_t *state)
 {
    uint32_t pressed;
 
    if (!state)
-      return false;
+      return HOTKEY_NONE;
 
    pressed = state->buttons & ~previous_buttons;
    previous_buttons = state->buttons;
@@ -364,10 +380,13 @@ static bool handle_hotkeys(cont_state_t *state)
    if ((state->buttons & CONT_START) && (pressed & CONT_X))
       load_state_file(loaded_rom_path);
 
-   if ((state->buttons & CONT_START) && (pressed & CONT_B))
-      return true;
+   if ((state->buttons & CONT_START) && (pressed & CONT_A))
+      return HOTKEY_SETTINGS;
 
-   return false;
+   if ((state->buttons & CONT_START) && (pressed & CONT_B))
+      return HOTKEY_QUIT;
+
+   return HOTKEY_NONE;
 }
 
 int main(int argc, char **argv)
@@ -379,7 +398,14 @@ int main(int argc, char **argv)
    struct retro_system_info sys_info;
    uint8_t *rom_data = NULL;
    size_t rom_size = 0;
-   bool quit = false;
+   hotkey_action_t action;
+
+   dc_settings_load(dc_settings_get());
+   video_scale = dc_settings_get()->scale;
+   if (video_scale < DC_SETTINGS_SCALE_MIN)
+      video_scale = DC_SETTINGS_SCALE_MIN;
+   if (video_scale > DC_SETTINGS_SCALE_MAX)
+      video_scale = DC_SETTINGS_SCALE_MAX;
 
    ensure_save_dir();
 
@@ -404,21 +430,16 @@ int main(int argc, char **argv)
    retro_init();
 
    retro_get_system_info(&sys_info);
-   printf("beetlengp: loaded core %s %s\n", sys_info.library_name, sys_info.library_version);
+   printf("beetlengp: loaded core %s %s\n",
+         sys_info.library_name, sys_info.library_version);
 
-   rom_path = pick_rom_path(argc, argv);
-   if (!rom_path)
-   {
-      menu_path = menu_pick_rom();
-      rom_path = menu_path;
-   }
-
+   rom_path = pick_rom_path(argc, argv, &menu_path);
    if (!rom_path)
    {
       printf("beetlengp: no ROM selected\n");
       retro_deinit();
       free(scaled_frame);
-      return 1;
+      return 0;
    }
 
    loaded_rom_path = rom_path;
@@ -458,18 +479,32 @@ int main(int argc, char **argv)
    if (audio_stream)
       dc_audio_start(audio_stream, (unsigned)av_info.timing.sample_rate);
 
+   apply_audio_settings();
    previous_buttons = 0;
 
-   while (!quit)
+   for (;;)
    {
       cont_state_t *state = NULL;
 
       if (controller)
          state = (cont_state_t *)maple_dev_status(controller);
 
-      quit = handle_hotkeys(state);
-      if (quit)
+      action = handle_hotkeys(state);
+      if (action == HOTKEY_QUIT)
          break;
+
+      if (action == HOTKEY_SETTINGS)
+      {
+         menu_settings();
+         video_scale = dc_settings_get()->scale;
+         if (video_scale < DC_SETTINGS_SCALE_MIN)
+            video_scale = DC_SETTINGS_SCALE_MIN;
+         if (video_scale > DC_SETTINGS_SCALE_MAX)
+            video_scale = DC_SETTINGS_SCALE_MAX;
+         apply_audio_settings();
+         ensure_save_dir();
+         previous_buttons = 0;
+      }
 
       if (audio_stream)
          dc_audio_poll(audio_stream);

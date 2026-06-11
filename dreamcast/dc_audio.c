@@ -16,8 +16,15 @@ struct dc_audio_stream
    volatile uint32_t read_pos;
    volatile uint32_t write_pos;
    unsigned rate;
+   uint8_t volume;
+   bool enabled;
    bool started;
 };
+
+static int16_t dc_audio_apply_volume(int16_t sample, uint8_t volume)
+{
+   return (int16_t)(((int32_t)sample * volume) / 255);
+}
 
 static dc_audio_stream_t *dc_audio_active;
 
@@ -70,8 +77,10 @@ static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int req_bytes,
          continue;
       }
 
-      dst[i * 2]     = stream->ring[stream->read_pos++];
-      dst[i * 2 + 1] = stream->ring[stream->read_pos++];
+      dst[i * 2]     = dc_audio_apply_volume(
+            stream->ring[stream->read_pos++], stream->volume);
+      dst[i * 2 + 1] = dc_audio_apply_volume(
+            stream->ring[stream->read_pos++], stream->volume);
       stream->read_pos %= (DC_AUDIO_RING_SAMPLES * 2);
    }
 
@@ -122,8 +131,10 @@ dc_audio_stream_t *dc_audio_create(unsigned rate)
    dc_audio_clear_out(stream->out_buf,
          (int)(DC_AUDIO_OUT_BYTES / (sizeof(int16_t) * 2)));
 
-   stream->handle = SND_STREAM_INVALID;
-   stream->rate   = dc_audio_pick_rate(rate);
+   stream->handle  = SND_STREAM_INVALID;
+   stream->rate    = dc_audio_pick_rate(rate);
+   stream->volume  = 255;
+   stream->enabled = true;
    stream->started = false;
 
    return stream;
@@ -182,6 +193,7 @@ bool dc_audio_start(dc_audio_stream_t *stream, unsigned rate)
    stream->read_pos  = 0;
    stream->write_pos = 0;
    snd_stream_start(stream->handle, stream->rate, 1);
+   snd_stream_volume(stream->handle, stream->volume);
    stream->started = true;
    return true;
 }
@@ -208,7 +220,7 @@ size_t dc_audio_write(dc_audio_stream_t *stream,
 {
    size_t queued;
 
-   if (!stream || !stream->started || !data || !frames)
+   if (!stream || !stream->started || !data || !frames || !stream->enabled)
       return 0;
 
    dc_audio_poll(stream);
@@ -220,6 +232,8 @@ size_t dc_audio_write(dc_audio_stream_t *stream,
       {
          dc_audio_poll(stream);
          queued += dc_audio_queue(stream, data + queued * 2, frames - queued);
+         if (queued < frames)
+            thd_sleep(1);
       }
    }
 
@@ -243,4 +257,22 @@ size_t dc_audio_buffer_frames(dc_audio_stream_t *stream)
 {
    (void)stream;
    return DC_AUDIO_RING_SAMPLES;
+}
+
+void dc_audio_set_volume(dc_audio_stream_t *stream, uint8_t volume)
+{
+   if (!stream)
+      return;
+
+   stream->volume = volume;
+   if (stream->handle != SND_STREAM_INVALID)
+      snd_stream_volume(stream->handle, volume);
+}
+
+void dc_audio_set_enabled(dc_audio_stream_t *stream, bool enabled)
+{
+   if (!stream)
+      return;
+
+   stream->enabled = enabled;
 }

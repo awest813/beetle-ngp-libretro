@@ -30,4 +30,7 @@ size_t dc_audio_write(dc_audio_stream_t *stream,
 size_t dc_audio_write_avail_frames(dc_audio_stream_t *stream);
 size_t dc_audio_buffer_frames(dc_audio_stream_t *stream);
 
+void dc_audio_set_volume(dc_audio_stream_t *stream, uint8_t volume);
+void dc_audio_set_enabled(dc_audio_stream_t *stream, bool enabled);
+
 #endif

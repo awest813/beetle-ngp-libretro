@@ -1,6 +1,7 @@
 /* RetroArch Dreamcast audio driver (wraps shared KOS backend) */
 
 #include "../../dreamcast/dc_audio.h"
+#include "../../dreamcast/dc_settings.h"
 
 #include <boolean.h>
 #include <retro_miscellaneous.h>
@@ -44,6 +45,10 @@ static void *dc_audio_init(const char *device,
       free(wa);
       return NULL;
    }
+
+   dc_settings_load(dc_settings_get());
+   dc_audio_set_volume(wa->stream, dc_settings_get()->volume);
+   dc_audio_set_enabled(wa->stream, dc_settings_get()->audio_enabled);
 
    wa->rate    = picked;
    *new_rate   = picked;

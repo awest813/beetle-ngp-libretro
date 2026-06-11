@@ -47,6 +47,8 @@ cd dreamcast
 make
 ```
 
+Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, audio on/off, save directory).
+
 ## Layout
 
 | Path | Purpose |
@@ -66,12 +68,15 @@ make
 | Button | Action |
 |--------|--------|
 | D-Pad / A / B / X / Y | Standard NGP mapping (configure in RGUI) |
-| Start + A | Open RetroArch menu |
+| Start + A | Open RetroArch menu (or in-game settings in standalone launcher) |
 | Start + B | Exit (standalone launcher only) |
+| Start + X | Load save state (standalone launcher) |
+| Start + Y | Save save state (standalone launcher) |
 
 ## Notes
 
-- Audio uses a shared `dreamcast/dc_audio.c` backend. The KOS stream callback expects **byte counts** (not sample frames); output is locked to **44100 Hz** stereo to match Beetle NGP.
+- Audio uses a shared `dreamcast/dc_audio.c` backend with software volume and mute support. The KOS stream callback expects **byte counts** (not sample frames); output is locked to **44100 Hz** stereo to match Beetle NGP.
+- RetroArch reads volume/mute from the same `beetlengp.cfg` as the standalone launcher when the audio driver starts.
 - Upstream RetroArch has no official Dreamcast port; this overlay lives in beetle-ngp-libretro until drivers can move upstream.
 - The static core archive must be named `libretro_dreamcast.a` in the RetroArch build directory.
 - RGB555 output is used to match the Dreamcast framebuffer (`PM_RGB555`).

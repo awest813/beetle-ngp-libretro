@@ -1,5 +1,7 @@
 #include "menu.h"
 
+#include "dc_settings.h"
+
 #include <kos.h>
 #include <dc/maple/controller.h>
 
@@ -32,6 +34,26 @@ static const char *scan_dirs[] = {
 
 static rom_entry_t roms[MAX_ROM_ENTRIES];
 static int rom_count;
+
+static cont_state_t *poll_controller(void)
+{
+   maple_device_t *device = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+
+   if (!device)
+      return NULL;
+
+   return (cont_state_t *)maple_dev_status(device);
+}
+
+static void clear_screen(void)
+{
+   memset(vram_s, 0, SCREEN_PITCH * 480 * sizeof(uint16_t));
+}
+
+static void draw_text(int x, int y, int color, const char *text)
+{
+   bfont_draw_str(vram_s + y * SCREEN_PITCH + x, SCREEN_PITCH, color, text);
+}
 
 static bool has_rom_extension(const char *name)
 {
@@ -92,33 +114,20 @@ static void collect_roms(void)
       scan_directory(scan_dirs[i]);
 }
 
-static cont_state_t *poll_controller(void)
-{
-   maple_device_t *device = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
-
-   if (!device)
-      return NULL;
-
-   return (cont_state_t *)maple_dev_status(device);
-}
-
-static void draw_menu(int selected)
+static void draw_rom_menu(int selected)
 {
    int y = 24;
    int i;
 
-   memset(vram_s, 0, SCREEN_PITCH * 480 * sizeof(uint16_t));
-   bfont_draw_str(vram_s + y * SCREEN_PITCH + 20, SCREEN_PITCH, 1,
-         "Beetle NGP - Select ROM");
+   clear_screen();
+   draw_text(20, y, 1, "Beetle NGP - Select ROM");
    y += 24;
-   bfont_draw_str(vram_s + y * SCREEN_PITCH + 20, SCREEN_PITCH, 1,
-         "D-Pad: move   A: load   B: cancel");
+   draw_text(20, y, 1, "D-Pad: move   A: load   B: back");
    y += 32;
 
    if (rom_count == 0)
    {
-      bfont_draw_str(vram_s + y * SCREEN_PITCH + 20, SCREEN_PITCH, 1,
-            "No ROMs found on /sd or /ide");
+      draw_text(20, y, 1, "No ROMs found on /sd or /ide");
       return;
    }
 
@@ -133,8 +142,7 @@ static void draw_menu(int selected)
 
       snprintf(line, sizeof(line), "%s%s",
             (i == selected) ? "> " : "  ", roms[i].name);
-      bfont_draw_str(vram_s + y * SCREEN_PITCH + 20, SCREEN_PITCH,
-            (i == selected) ? 1 : 0, line);
+      draw_text(20, y, (i == selected) ? 1 : 0, line);
       y += 20;
    }
 }
@@ -156,7 +164,7 @@ char *menu_pick_rom(void)
    {
       uint32_t pressed;
 
-      draw_menu(selected);
+      draw_rom_menu(selected);
 
       state = poll_controller();
       if (!state)
@@ -190,4 +198,236 @@ char *menu_pick_rom(void)
    }
 
    return result;
+}
+
+static void draw_main_menu(int selected)
+{
+   static const char *items[] = {
+      "Load Game",
+      "Settings",
+      "Exit",
+   };
+   int y = 48;
+   size_t i;
+
+   clear_screen();
+   draw_text(20, 24, 1, "Beetle NeoGeo Pocket");
+   draw_text(20, 48, 1, "D-Pad: move   A: select   B: cancel");
+
+   y = 96;
+   for (i = 0; i < sizeof(items) / sizeof(items[0]); i++)
+   {
+      char line[48];
+
+      snprintf(line, sizeof(line), "%s%s",
+            (int)i == selected ? "> " : "  ", items[i]);
+      draw_text(40, y, ((int)i == selected) ? 1 : 0, line);
+      y += 28;
+   }
+}
+
+menu_action_t menu_main(char **rom_path_out)
+{
+   cont_state_t *state;
+   uint32_t previous = 0;
+   int selected = 0;
+   menu_action_t action = MENU_ACTION_NONE;
+   char *picked = NULL;
+
+   if (rom_path_out)
+      *rom_path_out = NULL;
+
+   vid_set_mode(DM_640x480, PM_RGB555);
+
+   for (;;)
+   {
+      uint32_t pressed;
+
+      draw_main_menu(selected);
+
+      state = poll_controller();
+      if (!state)
+      {
+         thd_sleep(16);
+         continue;
+      }
+
+      pressed = state->buttons & ~previous;
+      previous = state->buttons;
+
+      if (pressed & CONT_DPAD_UP)
+      {
+         if (selected > 0)
+            selected--;
+      }
+      else if (pressed & CONT_DPAD_DOWN)
+      {
+         if (selected < 2)
+            selected++;
+      }
+      else if (pressed & CONT_A)
+      {
+         if (selected == 0)
+         {
+            picked = menu_pick_rom();
+            if (picked)
+            {
+               action = MENU_ACTION_LOAD;
+               if (rom_path_out)
+                  *rom_path_out = picked;
+               else
+                  free(picked);
+            }
+            break;
+         }
+         else if (selected == 1)
+         {
+            menu_settings();
+         }
+         else
+         {
+            action = MENU_ACTION_QUIT;
+            break;
+         }
+      }
+      else if (pressed & CONT_B || pressed & CONT_START)
+      {
+         action = MENU_ACTION_QUIT;
+         break;
+      }
+
+      thd_sleep(16);
+   }
+
+   return action;
+}
+
+static void draw_settings_menu(int selected, const dc_settings_t *settings)
+{
+   char line[80];
+   int y = 24;
+
+   clear_screen();
+   draw_text(20, y, 1, "Settings");
+   y += 24;
+   draw_text(20, y, 1, "Left/Right: change   A: toggle   B: save");
+   y += 32;
+
+   snprintf(line, sizeof(line), "%sVolume: %3u",
+         (selected == 0) ? "> " : "  ", settings->volume);
+   draw_text(20, y, (selected == 0) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sScale: %ux",
+         (selected == 1) ? "> " : "  ", settings->scale);
+   draw_text(20, y, (selected == 1) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sAudio: %s",
+         (selected == 2) ? "> " : "  ",
+         settings->audio_enabled ? "ON" : "OFF");
+   draw_text(20, y, (selected == 2) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sSave dir: %s",
+         (selected == 3) ? "> " : "  ", settings->save_dir);
+   draw_text(20, y, (selected == 3) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
+   draw_text(20, y, 0, line);
+}
+
+void menu_settings(void)
+{
+   dc_settings_t *settings = dc_settings_get();
+   cont_state_t *state;
+   uint32_t previous = 0;
+   int selected = 0;
+   bool dirty = false;
+
+   vid_set_mode(DM_640x480, PM_RGB555);
+
+   for (;;)
+   {
+      uint32_t pressed;
+
+      draw_settings_menu(selected, settings);
+
+      state = poll_controller();
+      if (!state)
+      {
+         thd_sleep(16);
+         continue;
+      }
+
+      pressed = state->buttons & ~previous;
+      previous = state->buttons;
+
+      if (pressed & CONT_DPAD_UP)
+      {
+         if (selected > 0)
+            selected--;
+      }
+      else if (pressed & CONT_DPAD_DOWN)
+      {
+         if (selected < 3)
+            selected++;
+      }
+      else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
+      {
+         int delta = (pressed & CONT_DPAD_RIGHT) ? 1 : -1;
+
+         if (selected == 0)
+         {
+            int vol = (int)settings->volume + delta * 10;
+
+            if (vol < 0)
+               vol = 0;
+            if (vol > 255)
+               vol = 255;
+            settings->volume = (uint8_t)vol;
+            dirty = true;
+         }
+         else if (selected == 1)
+         {
+            int scale = (int)settings->scale + delta;
+
+            if (scale < DC_SETTINGS_SCALE_MIN)
+               scale = DC_SETTINGS_SCALE_MIN;
+            if (scale > DC_SETTINGS_SCALE_MAX)
+               scale = DC_SETTINGS_SCALE_MAX;
+            settings->scale = (uint8_t)scale;
+            dirty = true;
+         }
+         else if (selected == 3)
+         {
+            if (delta > 0)
+            {
+               strncpy(settings->save_dir, "/sd/ngp", sizeof(settings->save_dir) - 1);
+               strncpy(settings->system_dir, "/sd", sizeof(settings->system_dir) - 1);
+            }
+            else
+            {
+               strncpy(settings->save_dir, "/ide/ngp", sizeof(settings->save_dir) - 1);
+               strncpy(settings->system_dir, "/ide", sizeof(settings->system_dir) - 1);
+            }
+            settings->save_dir[sizeof(settings->save_dir) - 1]     = '\0';
+            settings->system_dir[sizeof(settings->system_dir) - 1] = '\0';
+            dirty = true;
+         }
+      }
+      else if (pressed & CONT_A && selected == 2)
+      {
+         settings->audio_enabled = !settings->audio_enabled;
+         dirty = true;
+      }
+      else if (pressed & CONT_B || pressed & CONT_START)
+         break;
+
+      thd_sleep(16);
+   }
+
+   if (dirty)
+      dc_settings_save(settings);
 }
