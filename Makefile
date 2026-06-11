@@ -315,6 +315,24 @@ include $(DEVKITPRO)/libnx/switch_rules
     CFLAGS += -std=gnu11
     STATIC_LINKING = 1
 
+# Sega Dreamcast (KallistiOS / DreamSDK)
+else ifeq ($(platform), dreamcast)
+   TARGET := $(TARGET_NAME)_libretro_$(platform).a
+   CC  = kos-cc
+   CXX = kos-c++
+   AR  = kos-ar
+   fpic :=
+   SHARED :=
+   LIBS :=
+   STATIC_LINKING = 1
+   LOAD_FROM_MEMORY = 1
+   ENDIANNESS_DEFINES := -DLSB_FIRST
+   FLAGS += -D__DREAMCAST__ -D__SH4__
+   FLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics
+   FLAGS += -ffast-math -fomit-frame-pointer
+   FLAGS += -ffunction-sections -fdata-sections
+   LDFLAGS += -Wl,--gc-sections
+
 # Nintendo Game Cube / Wii / WiiU
 else ifneq (,$(filter $(platform), ngc wii wiiu))
    TARGET := $(TARGET_NAME)_libretro_$(platform).a
