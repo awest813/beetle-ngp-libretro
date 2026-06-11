@@ -9,6 +9,7 @@
 
 #include "dc_audio.h"
 #include "dc_settings.h"
+#include "dc_video.h"
 #include "menu.h"
 
 #include <kos.h>
@@ -23,13 +24,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define FB_WIDTH     160
-#define FB_HEIGHT    152
-#define SCREEN_PITCH 640
+#define FB_WIDTH  160
+#define FB_HEIGHT 152
 
-static uint16_t *scaled_frame;
-static unsigned scaled_w;
-static unsigned scaled_h;
+static dc_video_blitter_t *blitter;
 static unsigned video_scale;
 
 static maple_device_t *controller;
@@ -60,47 +58,33 @@ static void apply_audio_settings(void)
    dc_audio_set_enabled(audio_stream, cfg->audio_enabled);
 }
 
+static void apply_video_settings(void)
+{
+   const dc_settings_t *cfg = dc_settings_get();
+   dc_video_output_t output = (dc_video_output_t)cfg->video_output;
+
+   video_scale = cfg->scale;
+   if (video_scale < DC_SETTINGS_SCALE_MIN)
+      video_scale = DC_SETTINGS_SCALE_MIN;
+   if (video_scale > DC_SETTINGS_SCALE_MAX)
+      video_scale = DC_SETTINGS_SCALE_MAX;
+
+   dc_video_reinit(output);
+
+   if (blitter)
+      dc_video_blitter_set_scale(blitter, video_scale);
+}
+
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
 {
-   const uint16_t *src;
-   uint16_t *dst;
-   unsigned x, y, sx, sy;
-   unsigned offset_x, offset_y;
-
-   if (!data || !scaled_frame)
+   if (!data || !blitter)
       return;
-
-   src = (const uint16_t *)data;
 
    if (width != FB_WIDTH || height != FB_HEIGHT)
       return;
 
-   memset(scaled_frame, 0, scaled_w * scaled_h * sizeof(uint16_t));
-
-   offset_x = (scaled_w - (width * video_scale)) / 2;
-   offset_y = (scaled_h - (height * video_scale)) / 2;
-
-   for (y = 0; y < height; y++)
-   {
-      for (x = 0; x < width; x++)
-      {
-         uint16_t pixel = src[y * (pitch / sizeof(uint16_t)) + x];
-
-         for (sy = 0; sy < video_scale; sy++)
-         {
-            for (sx = 0; sx < video_scale; sx++)
-            {
-               dst = scaled_frame
-                  + (offset_y + y * video_scale + sy) * scaled_w
-                  + (offset_x + x * video_scale + sx);
-               *dst = pixel;
-            }
-         }
-      }
-   }
-
-   vid_waitvbl();
-   memcpy(vram_s, scaled_frame, scaled_w * scaled_h * sizeof(uint16_t));
+   dc_video_blitter_rgb555(blitter, data, width, height, pitch);
+   dc_video_blitter_present(blitter, true);
 }
 
 static size_t audio_sample_batch(const int16_t *data, size_t frames)
@@ -401,23 +385,20 @@ int main(int argc, char **argv)
    hotkey_action_t action;
 
    dc_settings_load(dc_settings_get());
-   video_scale = dc_settings_get()->scale;
-   if (video_scale < DC_SETTINGS_SCALE_MIN)
-      video_scale = DC_SETTINGS_SCALE_MIN;
-   if (video_scale > DC_SETTINGS_SCALE_MAX)
-      video_scale = DC_SETTINGS_SCALE_MAX;
-
+   apply_video_settings();
    ensure_save_dir();
 
-   vid_set_mode(DM_640x480, PM_RGB555);
-   scaled_w = 640;
-   scaled_h = 480;
-   scaled_frame = (uint16_t *)calloc(scaled_w * scaled_h, sizeof(uint16_t));
-   if (!scaled_frame)
+   blitter = dc_video_blitter_create(video_scale);
+   if (!blitter)
    {
       printf("beetlengp: out of memory for framebuffer\n");
       return 1;
    }
+
+   printf("beetlengp: video %ux%u cable=%s output=%s\n",
+         dc_video_width(), dc_video_height(),
+         dc_video_cable_name(dc_video_get_cable()),
+         dc_video_output_name((dc_video_output_t)dc_settings_get()->video_output));
 
    controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
 
@@ -438,7 +419,8 @@ int main(int argc, char **argv)
    {
       printf("beetlengp: no ROM selected\n");
       retro_deinit();
-      free(scaled_frame);
+      dc_video_blitter_destroy(blitter);
+      dc_video_shutdown();
       return 0;
    }
 
@@ -450,7 +432,8 @@ int main(int argc, char **argv)
       printf("beetlengp: failed to read ROM '%s'\n", rom_path);
       free(menu_path);
       retro_deinit();
-      free(scaled_frame);
+      dc_video_blitter_destroy(blitter);
+      dc_video_shutdown();
       return 1;
    }
 
@@ -465,7 +448,8 @@ int main(int argc, char **argv)
       free(rom_data);
       free(menu_path);
       retro_deinit();
-      free(scaled_frame);
+      dc_video_blitter_destroy(blitter);
+      dc_video_shutdown();
       return 1;
    }
 
@@ -496,11 +480,7 @@ int main(int argc, char **argv)
       if (action == HOTKEY_SETTINGS)
       {
          menu_settings();
-         video_scale = dc_settings_get()->scale;
-         if (video_scale < DC_SETTINGS_SCALE_MIN)
-            video_scale = DC_SETTINGS_SCALE_MIN;
-         if (video_scale > DC_SETTINGS_SCALE_MAX)
-            video_scale = DC_SETTINGS_SCALE_MAX;
+         apply_video_settings();
          apply_audio_settings();
          ensure_save_dir();
          previous_buttons = 0;
@@ -522,7 +502,8 @@ int main(int argc, char **argv)
    retro_deinit();
    free(rom_data);
    free(menu_path);
-   free(scaled_frame);
+   dc_video_blitter_destroy(blitter);
+   dc_video_shutdown();
 
    return 0;
 }

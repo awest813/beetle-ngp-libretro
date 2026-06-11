@@ -10,7 +10,7 @@
 #   dc-tool-ip -x beetlengp.elf
 
 TARGET = beetlengp.elf
-OBJS   = main.o menu.o dc_audio.o dc_settings.o
+OBJS   = main.o menu.o dc_audio.o dc_settings.o dc_video.o
 CORE   = ../mednafen_ngp_libretro_dreamcast.a
 
 KOS_CFLAGS += -I../libretro-common/include

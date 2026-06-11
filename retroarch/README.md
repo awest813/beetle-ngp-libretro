@@ -47,7 +47,7 @@ cd dreamcast
 make
 ```
 
-Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, audio on/off, save directory).
+Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, audio on/off, save directory).
 
 ## Layout
 
@@ -55,6 +55,7 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 |------|---------|
 | `overlay/gfx/drivers/dc_gfx.c` | RGB555 VRAM blit video driver |
 | `overlay/audio/drivers/dc_audio.c` | RetroArch wrapper around shared `dreamcast/dc_audio.c` |
+| `dreamcast/dc_video.c` | Shared VGA/TV mode selection and blitter (copied at build time) |
 | `dreamcast/dc_audio.c` | Shared KOS `snd_stream` ring buffer (copied at build time) |
 | `overlay/input/drivers_joypad/dc_joypad.c` | Maple controller joypad |
 | `overlay/input/drivers/dc_input.c` | Minimal input driver |
@@ -75,8 +76,9 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 
 ## Notes
 
+- Video uses a shared `dreamcast/dc_video.c` backend. Cable type is detected via `vid_check_cable()`; **Auto** picks `DM_640x480_VGA` for VGA boxes/cables and `DM_640x480_NTSC_IL` for composite (RGB uses `DM_640x480`). Settings allow forcing VGA or TV output.
 - Audio uses a shared `dreamcast/dc_audio.c` backend with software volume and mute support. The KOS stream callback expects **byte counts** (not sample frames); output is locked to **44100 Hz** stereo to match Beetle NGP.
-- RetroArch reads volume/mute from the same `beetlengp.cfg` as the standalone launcher when the audio driver starts.
+- RetroArch reads volume/mute/video from the same `beetlengp.cfg` as the standalone launcher when drivers start.
 - Upstream RetroArch has no official Dreamcast port; this overlay lives in beetle-ngp-libretro until drivers can move upstream.
 - The static core archive must be named `libretro_dreamcast.a` in the RetroArch build directory.
 - RGB555 output is used to match the Dreamcast framebuffer (`PM_RGB555`).

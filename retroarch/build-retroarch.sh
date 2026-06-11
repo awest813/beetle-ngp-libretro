@@ -43,6 +43,7 @@ cp -rf "${SCRIPT_DIR}/overlay/"* "${RETROARCH_DIR}/"
 mkdir -p "${RETROARCH_DIR}/dreamcast"
 cp -f "${CORE_DIR}/dreamcast/dc_audio.c" "${CORE_DIR}/dreamcast/dc_audio.h" \
    "${CORE_DIR}/dreamcast/dc_settings.c" "${CORE_DIR}/dreamcast/dc_settings.h" \
+   "${CORE_DIR}/dreamcast/dc_video.c" "${CORE_DIR}/dreamcast/dc_video.h" \
    "${RETROARCH_DIR}/dreamcast/"
 
 echo "Applying Dreamcast driver patches..."

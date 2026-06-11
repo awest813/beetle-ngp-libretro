@@ -1,6 +1,7 @@
 #include "menu.h"
 
 #include "dc_settings.h"
+#include "dc_video.h"
 
 #include <kos.h>
 #include <dc/maple/controller.h>
@@ -14,7 +15,10 @@
 
 #define MAX_ROM_ENTRIES 64
 #define ROM_NAME_LEN    48
-#define SCREEN_PITCH    640
+static unsigned screen_pitch(void)
+{
+   return dc_video_width();
+}
 
 typedef struct
 {
@@ -47,12 +51,14 @@ static cont_state_t *poll_controller(void)
 
 static void clear_screen(void)
 {
-   memset(vram_s, 0, SCREEN_PITCH * 480 * sizeof(uint16_t));
+   dc_video_clear_screen();
 }
 
 static void draw_text(int x, int y, int color, const char *text)
 {
-   bfont_draw_str(vram_s + y * SCREEN_PITCH + x, SCREEN_PITCH, color, text);
+   unsigned pitch = screen_pitch();
+
+   bfont_draw_str(vram_s + y * pitch + x, pitch, color, text);
 }
 
 static bool has_rom_extension(const char *name)
@@ -158,8 +164,6 @@ char *menu_pick_rom(void)
    if (rom_count == 0)
       return NULL;
 
-   vid_set_mode(DM_640x480, PM_RGB555);
-
    for (;;)
    {
       uint32_t pressed;
@@ -236,8 +240,6 @@ menu_action_t menu_main(char **rom_path_out)
 
    if (rom_path_out)
       *rom_path_out = NULL;
-
-   vid_set_mode(DM_640x480, PM_RGB555);
 
    for (;;)
    {
@@ -329,11 +331,20 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    draw_text(20, y, (selected == 2) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sSave dir: %s",
-         (selected == 3) ? "> " : "  ", settings->save_dir);
+   snprintf(line, sizeof(line), "%sVideo: %s",
+         (selected == 3) ? "> " : "  ",
+         dc_video_output_name((dc_video_output_t)settings->video_output));
    draw_text(20, y, (selected == 3) ? 1 : 0, line);
    y += 24;
 
+   snprintf(line, sizeof(line), "%sSave dir: %s",
+         (selected == 4) ? "> " : "  ", settings->save_dir);
+   draw_text(20, y, (selected == 4) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "  Cable: %s", dc_video_cable_name(dc_video_get_cable()));
+   draw_text(20, y, 0, line);
+   y += 20;
    snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
    draw_text(20, y, 0, line);
 }
@@ -345,8 +356,6 @@ void menu_settings(void)
    uint32_t previous = 0;
    int selected = 0;
    bool dirty = false;
-
-   vid_set_mode(DM_640x480, PM_RGB555);
 
    for (;;)
    {
@@ -371,7 +380,7 @@ void menu_settings(void)
       }
       else if (pressed & CONT_DPAD_DOWN)
       {
-         if (selected < 3)
+         if (selected < 4)
             selected++;
       }
       else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
@@ -401,6 +410,19 @@ void menu_settings(void)
             dirty = true;
          }
          else if (selected == 3)
+         {
+            int next = (int)settings->video_output + delta;
+
+            if (next < 0)
+               next = DC_VIDEO_OUTPUT_COUNT - 1;
+            if (next >= DC_VIDEO_OUTPUT_COUNT)
+               next = 0;
+
+            settings->video_output = (uint8_t)next;
+            dc_video_reinit((dc_video_output_t)settings->video_output);
+            dirty = true;
+         }
+         else if (selected == 4)
          {
             if (delta > 0)
             {

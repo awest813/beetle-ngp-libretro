@@ -1,7 +1,11 @@
 /* RetroArch Dreamcast video driver (KallistiOS / RGB555 VRAM) */
 
+#include "../../dreamcast/dc_video.h"
+#include "../../dreamcast/dc_settings.h"
+
 #include <kos.h>
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <boolean.h>
@@ -19,26 +23,17 @@
 #include "../../configuration.h"
 #include "../../driver.h"
 
-#define DC_SCREEN_W 640
-#define DC_SCREEN_H 480
 #define DC_SCALE_MAX 4
 
 typedef struct dc_video
 {
-   uint16_t *scaled;
-   unsigned out_w;
-   unsigned out_h;
+   dc_video_blitter_t *blitter;
    unsigned scale;
    unsigned rotation;
    bool vsync;
    bool rgb32;
    bool keep_aspect;
 } dc_video_t;
-
-static void dc_clear_screen(uint16_t *fb, unsigned w, unsigned h)
-{
-   memset(fb, 0, w * h * sizeof(uint16_t));
-}
 
 static void dc_blit_frame(dc_video_t *dc, const void *data,
       unsigned width, unsigned height, size_t pitch)
@@ -47,38 +42,41 @@ static void dc_blit_frame(dc_video_t *dc, const void *data,
    unsigned x, y, sx, sy;
    unsigned offset_x, offset_y;
    unsigned draw_w, draw_h;
+   unsigned scale;
 
-   if (!data || !dc->scaled || !width || !height)
+   if (!data || !dc->blitter || !width || !height)
       return;
 
-   dc_clear_screen(dc->scaled, dc->out_w, dc->out_h);
+   scale = dc->scale;
+   dc_video_blitter_clear(dc->blitter);
 
-   draw_w = width * dc->scale;
-   draw_h = height * dc->scale;
+   draw_w = width * scale;
+   draw_h = height * scale;
 
    if (dc->keep_aspect)
    {
-      if (draw_w > dc->out_w)
+      if (draw_w > dc_video_width())
       {
-         dc->scale = dc->out_w / width;
-         if (dc->scale < 1)
-            dc->scale = 1;
-         draw_w = width * dc->scale;
-         draw_h = height * dc->scale;
+         scale = dc_video_width() / width;
+         if (scale < 1)
+            scale = 1;
+         draw_w = width * scale;
+         draw_h = height * scale;
       }
 
-      if (draw_h > dc->out_h)
+      if (draw_h > dc_video_height())
       {
-         dc->scale = dc->out_h / height;
-         if (dc->scale < 1)
-            dc->scale = 1;
-         draw_w = width * dc->scale;
-         draw_h = height * dc->scale;
+         scale = dc_video_height() / height;
+         if (scale < 1)
+            scale = 1;
+         draw_w = width * scale;
+         draw_h = height * scale;
       }
    }
 
-   offset_x = (dc->out_w - draw_w) / 2;
-   offset_y = (dc->out_h - draw_h) / 2;
+   dc->scale = scale;
+   offset_x = (dc_video_width() - draw_w) / 2;
+   offset_y = (dc_video_height() - draw_h) / 2;
 
    if (dc->rgb32)
    {
@@ -93,12 +91,12 @@ static void dc_blit_frame(dc_video_t *dc, const void *data,
                             | ((px >> 6) & 0x03E0)
                             | ((px >> 3) & 0x001F);
 
-            for (sy = 0; sy < dc->scale; sy++)
+            for (sy = 0; sy < scale; sy++)
             {
-               for (sx = 0; sx < dc->scale; sx++)
+               for (sx = 0; sx < scale; sx++)
                {
-                  dc->scaled[(offset_y + y * dc->scale + sy) * dc->out_w
-                     + (offset_x + x * dc->scale + sx)] = rgb555;
+                  dc->blitter->buffer[(offset_y + y * scale + sy) * dc->blitter->buf_w
+                     + (offset_x + x * scale + sx)] = rgb555;
                }
             }
          }
@@ -106,24 +104,9 @@ static void dc_blit_frame(dc_video_t *dc, const void *data,
    }
    else
    {
-      for (y = 0; y < height; y++)
-      {
-         const uint16_t *row = (const uint16_t *)(src8 + y * pitch);
-
-         for (x = 0; x < width; x++)
-         {
-            uint16_t pixel = row[x];
-
-            for (sy = 0; sy < dc->scale; sy++)
-            {
-               for (sx = 0; sx < dc->scale; sx++)
-               {
-                  dc->scaled[(offset_y + y * dc->scale + sy) * dc->out_w
-                     + (offset_x + x * dc->scale + sx)] = pixel;
-               }
-            }
-         }
-      }
+      dc_video_blitter_set_scale(dc->blitter, scale);
+      dc_video_blitter_rgb555(dc->blitter, data, width, height, pitch);
+      dc->scale = dc->blitter->scale;
    }
 }
 
@@ -131,6 +114,7 @@ static void *dc_gfx_init(const video_info_t *video,
       input_driver_t **input, void **input_data)
 {
    dc_video_t *dc = (dc_video_t *)calloc(1, sizeof(*dc));
+   const dc_settings_t *cfg;
 
    (void)input;
    (void)input_data;
@@ -138,24 +122,25 @@ static void *dc_gfx_init(const video_info_t *video,
    if (!dc)
       return NULL;
 
-   vid_set_mode(DM_640x480, PM_RGB555);
+   dc_settings_load(dc_settings_get());
+   cfg = dc_settings_get();
 
-   dc->out_w       = DC_SCREEN_W;
-   dc->out_h       = DC_SCREEN_H;
-   dc->scale       = 3;
+   dc_video_init((dc_video_output_t)cfg->video_output);
+
+   dc->scale       = cfg->scale ? cfg->scale : 3;
    dc->vsync       = video->vsync;
    dc->rgb32       = video->rgb32;
    dc->keep_aspect = true;
 
-   dc->scaled = (uint16_t *)calloc(dc->out_w * dc->out_h, sizeof(uint16_t));
-   if (!dc->scaled)
+   dc->blitter = dc_video_blitter_create(dc->scale);
+   if (!dc->blitter)
    {
       free(dc);
       return NULL;
    }
 
-   dc_clear_screen(dc->scaled, dc->out_w, dc->out_h);
-   memcpy(vram_s, dc->scaled, dc->out_w * dc->out_h * sizeof(uint16_t));
+   dc_video_blitter_clear(dc->blitter);
+   dc_video_blitter_present(dc->blitter, false);
 
    return dc;
 }
@@ -176,10 +161,7 @@ static bool dc_gfx_frame(void *data, const void *frame,
    if (frame)
       dc_blit_frame(dc, frame, width, height, pitch);
 
-   if (dc->vsync)
-      vid_waitvbl();
-
-   memcpy(vram_s, dc->scaled, dc->out_w * dc->out_h * sizeof(uint16_t));
+   dc_video_blitter_present(dc->blitter, dc->vsync);
    return true;
 }
 
@@ -220,7 +202,8 @@ static void dc_gfx_free(void *data)
    if (!dc)
       return;
 
-   free(dc->scaled);
+   dc_video_blitter_destroy(dc->blitter);
+   dc_video_shutdown();
    free(dc);
 }
 
@@ -236,9 +219,9 @@ static void dc_gfx_set_viewport(void *data, unsigned width, unsigned height,
    if (!dc || !width || !height)
       return;
 
-   scale = DC_SCREEN_W / width;
-   if (DC_SCREEN_H / height < scale)
-      scale = DC_SCREEN_H / height;
+   scale = dc_video_width() / width;
+   if (dc_video_height() / height < scale)
+      scale = dc_video_height() / height;
 
    if (scale < 1)
       scale = 1;
@@ -246,6 +229,7 @@ static void dc_gfx_set_viewport(void *data, unsigned width, unsigned height,
       scale = DC_SCALE_MAX;
 
    dc->scale = scale;
+   dc_video_blitter_set_scale(dc->blitter, scale);
 }
 
 static void dc_gfx_viewport_info(void *data, struct video_viewport *vp)
@@ -257,10 +241,10 @@ static void dc_gfx_viewport_info(void *data, struct video_viewport *vp)
 
    vp->x      = 0;
    vp->y      = 0;
-   vp->width  = dc->out_w;
-   vp->height = dc->out_h;
-   vp->full_width  = dc->out_w;
-   vp->full_height = dc->out_h;
+   vp->width  = dc_video_width();
+   vp->height = dc_video_height();
+   vp->full_width  = dc_video_width();
+   vp->full_height = dc_video_height();
 }
 
 video_driver_t video_dc = {
