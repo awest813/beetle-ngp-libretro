@@ -325,7 +325,9 @@ else ifeq ($(platform), dreamcast)
    SHARED :=
    LIBS :=
    STATIC_LINKING = 1
+   FORCE_VFS = 1
    LOAD_FROM_MEMORY = 1
+   override FRONTEND_SUPPORTS_RGB565 := 0
    ENDIANNESS_DEFINES := -DLSB_FIRST
    FLAGS += -D__DREAMCAST__ -D__SH4__
    FLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics

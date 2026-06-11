@@ -7,6 +7,8 @@
  *   beetlengp.elf /sd/path/to/game.ngp
  */
 
+#include "menu.h"
+
 #include <kos.h>
 #include <dc/maple/controller.h>
 #include <dc/sound/stream.h>
@@ -18,26 +20,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define FB_WIDTH  160
 #define FB_HEIGHT 152
 #define SCALE     3
+#define SCREEN_PITCH 640
 #define AUDIO_RING_SAMPLES 16384
 
 static const char *system_dir = "/sd";
 static const char *save_dir   = "/sd/ngp";
-
-static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
 
 static uint16_t *scaled_frame;
 static unsigned scaled_w;
 static unsigned scaled_h;
 
 static int16_t audio_ring[AUDIO_RING_SAMPLES * 2];
+static int16_t audio_out[SND_STREAM_BUFFER_MAX] __attribute__((aligned(32)));
 static volatile uint32_t audio_read;
 static volatile uint32_t audio_write;
 
 static maple_device_t *controller;
+static snd_stream_hnd_t stream = SND_STREAM_INVALID;
+static const char *loaded_rom_path;
+static uint32_t previous_buttons;
+
+static void ensure_save_dir(void)
+{
+   mkdir(save_dir, 0755);
+}
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
 {
@@ -79,7 +90,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
    }
 
    vid_waitvbl();
-   memcpy(vram_l, scaled_frame, scaled_w * scaled_h * sizeof(uint16_t));
+   memcpy(vram_s, scaled_frame, scaled_w * scaled_h * sizeof(uint16_t));
 }
 
 static size_t audio_sample_batch(const int16_t *data, size_t frames)
@@ -157,12 +168,8 @@ static bool environment(unsigned cmd, void *data)
          *(const char **)data = save_dir;
          return true;
       case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
-         if (*(const enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_RGB565
-               || *(const enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_0RGB1555)
-         {
-            pixel_format = *(const enum retro_pixel_format *)data;
+         if (*(const enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_0RGB1555)
             return true;
-         }
          return false;
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
          return false;
@@ -173,8 +180,6 @@ static bool environment(unsigned cmd, void *data)
 
 static void *stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
 {
-   int16_t *out = (int16_t *)snd_stream_get_data(hnd);
-   int produced = 0;
    int i;
 
    (void)hnd;
@@ -182,16 +187,19 @@ static void *stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
    for (i = 0; i < smp_req; i++)
    {
       if (audio_read == audio_write)
-         break;
+      {
+         audio_out[i * 2]     = 0;
+         audio_out[i * 2 + 1] = 0;
+         continue;
+      }
 
-      out[i * 2]     = audio_ring[audio_read++];
-      out[i * 2 + 1] = audio_ring[audio_read++];
+      audio_out[i * 2]     = audio_ring[audio_read++];
+      audio_out[i * 2 + 1] = audio_ring[audio_read++];
       audio_read %= (AUDIO_RING_SAMPLES * 2);
-      produced++;
    }
 
-   *smp_recv = produced;
-   return out;
+   *smp_recv = smp_req;
+   return audio_out;
 }
 
 static uint8_t *load_rom_file(const char *path, size_t *size_out)
@@ -242,10 +250,11 @@ static const char *pick_rom_path(int argc, char **argv)
 {
    static const char *candidates[] = {
       NULL,
+      "/sd/ngp/rom.ngp",
       "/sd/rom.ngp",
       "/sd/game.ngp",
+      "/ide/ngp/rom.ngp",
       "/ide/rom.ngp",
-      "/ide/game.ngp",
       "/pc/rom.ngp",
    };
 
@@ -257,6 +266,7 @@ static const char *pick_rom_path(int argc, char **argv)
    for (i = 1; i < sizeof(candidates) / sizeof(candidates[0]); i++)
    {
       FILE *probe = fopen(candidates[i], "rb");
+
       if (probe)
       {
          fclose(probe);
@@ -267,17 +277,155 @@ static const char *pick_rom_path(int argc, char **argv)
    return NULL;
 }
 
+static void make_state_path(char *out, size_t out_len, const char *rom_path)
+{
+   const char *base;
+   char name[128];
+   char *dot;
+
+   base = strrchr(rom_path, '/');
+   base = base ? base + 1 : rom_path;
+
+   strncpy(name, base, sizeof(name) - 1);
+   name[sizeof(name) - 1] = '\0';
+
+   dot = strrchr(name, '.');
+   if (dot)
+      *dot = '\0';
+
+   snprintf(out, out_len, "%s/%s.state", save_dir, name);
+}
+
+static bool save_state_file(const char *rom_path)
+{
+   char path[256];
+   size_t size;
+   void *buffer;
+   FILE *file;
+
+   size = retro_serialize_size();
+   if (!size)
+      return false;
+
+   buffer = malloc(size);
+   if (!buffer)
+      return false;
+
+   if (!retro_serialize(buffer, size))
+   {
+      free(buffer);
+      return false;
+   }
+
+   make_state_path(path, sizeof(path), rom_path);
+   file = fopen(path, "wb");
+   if (!file)
+   {
+      free(buffer);
+      return false;
+   }
+
+   fwrite(buffer, 1, size, file);
+   fclose(file);
+   free(buffer);
+
+   printf("beetlengp: saved state to %s\n", path);
+   return true;
+}
+
+static bool load_state_file(const char *rom_path)
+{
+   char path[256];
+   size_t size;
+   void *buffer;
+   FILE *file;
+   long file_size;
+
+   make_state_path(path, sizeof(path), rom_path);
+   file = fopen(path, "rb");
+   if (!file)
+      return false;
+
+   size = retro_serialize_size();
+   if (!size)
+   {
+      fclose(file);
+      return false;
+   }
+
+   fseek(file, 0, SEEK_END);
+   file_size = ftell(file);
+   rewind(file);
+
+   if ((size_t)file_size != size)
+   {
+      fclose(file);
+      return false;
+   }
+
+   buffer = malloc(size);
+   if (!buffer)
+   {
+      fclose(file);
+      return false;
+   }
+
+   if (fread(buffer, 1, size, file) != size)
+   {
+      free(buffer);
+      fclose(file);
+      return false;
+   }
+
+   fclose(file);
+
+   if (!retro_unserialize(buffer, size))
+   {
+      free(buffer);
+      return false;
+   }
+
+   free(buffer);
+   printf("beetlengp: loaded state from %s\n", path);
+   return true;
+}
+
+static bool handle_hotkeys(cont_state_t *state)
+{
+   uint32_t pressed;
+
+   if (!state)
+      return false;
+
+   pressed = state->buttons & ~previous_buttons;
+   previous_buttons = state->buttons;
+
+   if ((state->buttons & CONT_START) && (pressed & CONT_Y))
+      save_state_file(loaded_rom_path);
+
+   if ((state->buttons & CONT_START) && (pressed & CONT_X))
+      load_state_file(loaded_rom_path);
+
+   if ((state->buttons & CONT_START) && (pressed & CONT_B))
+      return true;
+
+   return false;
+}
+
 int main(int argc, char **argv)
 {
    const char *rom_path;
+   char *menu_path = NULL;
    struct retro_game_info game;
    struct retro_system_av_info av_info;
    struct retro_system_info sys_info;
-   snd_stream_hnd_t stream;
    uint8_t *rom_data = NULL;
    size_t rom_size = 0;
+   bool quit = false;
 
-   vid_set_mode(DM_640x480, PM_RGB565);
+   ensure_save_dir();
+
+   vid_set_mode(DM_640x480, PM_RGB555);
    scaled_w = 640;
    scaled_h = 480;
    scaled_frame = (uint16_t *)calloc(scaled_w * scaled_h, sizeof(uint16_t));
@@ -303,16 +451,25 @@ int main(int argc, char **argv)
    rom_path = pick_rom_path(argc, argv);
    if (!rom_path)
    {
-      printf("beetlengp: no ROM found. Usage: beetlengp.elf /sd/game.ngp\n");
+      menu_path = menu_pick_rom();
+      rom_path = menu_path;
+   }
+
+   if (!rom_path)
+   {
+      printf("beetlengp: no ROM selected\n");
       retro_deinit();
       free(scaled_frame);
       return 1;
    }
 
+   loaded_rom_path = rom_path;
+
    rom_data = load_rom_file(rom_path, &rom_size);
    if (!rom_data)
    {
       printf("beetlengp: failed to read ROM '%s'\n", rom_path);
+      free(menu_path);
       retro_deinit();
       free(scaled_frame);
       return 1;
@@ -327,44 +484,53 @@ int main(int argc, char **argv)
    {
       printf("beetlengp: core rejected ROM '%s'\n", rom_path);
       free(rom_data);
+      free(menu_path);
       retro_deinit();
       free(scaled_frame);
       return 1;
    }
 
    retro_get_system_av_info(&av_info);
-   printf("beetlengp: running %s at %.2f fps / %u Hz\n",
+   printf("beetlengp: running %s at %.2f fps / %.0f Hz\n",
          rom_path,
          av_info.timing.fps,
          av_info.timing.sample_rate);
 
-   stream = snd_stream_alloc((uint32_t)av_info.timing.sample_rate, 2, stream_callback);
-   if (stream)
-      snd_stream_start(stream, 64, 0xffff);
+   snd_stream_init();
+   stream = snd_stream_alloc(stream_callback, SND_STREAM_BUFFER_MAX);
+   if (stream != SND_STREAM_INVALID)
+      snd_stream_start(stream, (uint32_t)av_info.timing.sample_rate, 1);
 
-   while (1)
+   previous_buttons = 0;
+
+   while (!quit)
    {
-      cont_state_t *state;
+      cont_state_t *state = NULL;
 
       if (controller)
-      {
          state = (cont_state_t *)maple_dev_status(controller);
-         if (state && (state->buttons & CONT_START) && (state->buttons & CONT_A))
-            break;
-      }
+
+      quit = handle_hotkeys(state);
+      if (quit)
+         break;
+
+      if (stream != SND_STREAM_INVALID)
+         snd_stream_poll(stream);
 
       retro_run();
    }
 
-   if (stream)
+   if (stream != SND_STREAM_INVALID)
    {
       snd_stream_stop(stream);
       snd_stream_destroy(stream);
+      snd_stream_shutdown();
    }
 
    retro_unload_game();
    retro_deinit();
    free(rom_data);
+   free(menu_path);
    free(scaled_frame);
 
    return 0;

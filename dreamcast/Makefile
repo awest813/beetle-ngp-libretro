@@ -10,7 +10,7 @@
 #   dc-tool-ip -x beetlengp.elf
 
 TARGET = beetlengp.elf
-OBJS   = main.o
+OBJS   = main.o menu.o
 CORE   = ../mednafen_ngp_libretro_dreamcast.a
 
 KOS_CFLAGS += -I../libretro-common/include
@@ -23,7 +23,7 @@ $(CORE):
 	$(MAKE) -C .. platform=dreamcast
 
 $(TARGET): $(OBJS) $(CORE)
-	kos-c++ -o $(TARGET) $(OBJS) -Wl,--whole-archive $(CORE) -Wl,--no-whole-archive $(KOS_LIBS)
+	kos-c++ -o $(TARGET) $(OBJS) -Wl,--whole-archive $(CORE) -Wl,--no-whole-archive -lstdc++ $(KOS_LIBS)
 
 clean: clean_launcher clean_core
 
