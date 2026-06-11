@@ -40,6 +40,9 @@ cp -f "${CORE_DIR}/libretro_dreamcast.a" "${RETROARCH_DIR}/"
 
 echo "Copying Dreamcast platform overlay..."
 cp -rf "${SCRIPT_DIR}/overlay/"* "${RETROARCH_DIR}/"
+mkdir -p "${RETROARCH_DIR}/dreamcast"
+cp -f "${CORE_DIR}/dreamcast/dc_audio.c" "${CORE_DIR}/dreamcast/dc_audio.h" \
+   "${RETROARCH_DIR}/dreamcast/"
 
 echo "Applying Dreamcast driver patches..."
 for patch in "${SCRIPT_DIR}"/patches/*.patch; do

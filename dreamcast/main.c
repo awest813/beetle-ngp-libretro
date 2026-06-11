@@ -7,11 +7,11 @@
  *   beetlengp.elf /sd/path/to/game.ngp
  */
 
+#include "dc_audio.h"
 #include "menu.h"
 
 #include <kos.h>
 #include <dc/maple/controller.h>
-#include <dc/sound/stream.h>
 
 #include <libretro.h>
 
@@ -26,8 +26,6 @@
 #define FB_HEIGHT 152
 #define SCALE     3
 #define SCREEN_PITCH 640
-#define AUDIO_RING_SAMPLES 16384
-
 static const char *system_dir = "/sd";
 static const char *save_dir   = "/sd/ngp";
 
@@ -35,13 +33,8 @@ static uint16_t *scaled_frame;
 static unsigned scaled_w;
 static unsigned scaled_h;
 
-static int16_t audio_ring[AUDIO_RING_SAMPLES * 2];
-static int16_t audio_out[SND_STREAM_BUFFER_MAX] __attribute__((aligned(32)));
-static volatile uint32_t audio_read;
-static volatile uint32_t audio_write;
-
 static maple_device_t *controller;
-static snd_stream_hnd_t stream = SND_STREAM_INVALID;
+static dc_audio_stream_t *audio_stream;
 static const char *loaded_rom_path;
 static uint32_t previous_buttons;
 
@@ -95,21 +88,10 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
 
 static size_t audio_sample_batch(const int16_t *data, size_t frames)
 {
-   size_t i;
+   if (!audio_stream)
+      return 0;
 
-   for (i = 0; i < frames; i++)
-   {
-      uint32_t next = (audio_write + 2) % (AUDIO_RING_SAMPLES * 2);
-
-      if (next == audio_read)
-         break;
-
-      audio_ring[audio_write++] = data[i * 2];
-      audio_ring[audio_write++] = data[i * 2 + 1];
-      audio_write %= (AUDIO_RING_SAMPLES * 2);
-   }
-
-   return i;
+   return dc_audio_write(audio_stream, data, frames, false);
 }
 
 static void input_poll(void)
@@ -176,30 +158,6 @@ static bool environment(unsigned cmd, void *data)
       default:
          return false;
    }
-}
-
-static void *stream_callback(snd_stream_hnd_t hnd, int smp_req, int *smp_recv)
-{
-   int i;
-
-   (void)hnd;
-
-   for (i = 0; i < smp_req; i++)
-   {
-      if (audio_read == audio_write)
-      {
-         audio_out[i * 2]     = 0;
-         audio_out[i * 2 + 1] = 0;
-         continue;
-      }
-
-      audio_out[i * 2]     = audio_ring[audio_read++];
-      audio_out[i * 2 + 1] = audio_ring[audio_read++];
-      audio_read %= (AUDIO_RING_SAMPLES * 2);
-   }
-
-   *smp_recv = smp_req;
-   return audio_out;
 }
 
 static uint8_t *load_rom_file(const char *path, size_t *size_out)
@@ -496,10 +454,9 @@ int main(int argc, char **argv)
          av_info.timing.fps,
          av_info.timing.sample_rate);
 
-   snd_stream_init();
-   stream = snd_stream_alloc(stream_callback, SND_STREAM_BUFFER_MAX);
-   if (stream != SND_STREAM_INVALID)
-      snd_stream_start(stream, (uint32_t)av_info.timing.sample_rate, 1);
+   audio_stream = dc_audio_create((unsigned)av_info.timing.sample_rate);
+   if (audio_stream)
+      dc_audio_start(audio_stream, (unsigned)av_info.timing.sample_rate);
 
    previous_buttons = 0;
 
@@ -514,17 +471,16 @@ int main(int argc, char **argv)
       if (quit)
          break;
 
-      if (stream != SND_STREAM_INVALID)
-         snd_stream_poll(stream);
+      if (audio_stream)
+         dc_audio_poll(audio_stream);
 
       retro_run();
    }
 
-   if (stream != SND_STREAM_INVALID)
+   if (audio_stream)
    {
-      snd_stream_stop(stream);
-      snd_stream_destroy(stream);
-      snd_stream_shutdown();
+      dc_audio_destroy(audio_stream);
+      audio_stream = NULL;
    }
 
    retro_unload_game();

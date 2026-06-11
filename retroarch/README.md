@@ -52,7 +52,8 @@ make
 | Path | Purpose |
 |------|---------|
 | `overlay/gfx/drivers/dc_gfx.c` | RGB555 VRAM blit video driver |
-| `overlay/audio/drivers/dc_audio.c` | `snd_stream` audio driver |
+| `overlay/audio/drivers/dc_audio.c` | RetroArch wrapper around shared `dreamcast/dc_audio.c` |
+| `dreamcast/dc_audio.c` | Shared KOS `snd_stream` ring buffer (copied at build time) |
 | `overlay/input/drivers_joypad/dc_joypad.c` | Maple controller joypad |
 | `overlay/input/drivers/dc_input.c` | Minimal input driver |
 | `overlay/frontend/drivers/platform_dreamcast.c` | Paths and drive list |
@@ -70,6 +71,7 @@ make
 
 ## Notes
 
+- Audio uses a shared `dreamcast/dc_audio.c` backend. The KOS stream callback expects **byte counts** (not sample frames); output is locked to **44100 Hz** stereo to match Beetle NGP.
 - Upstream RetroArch has no official Dreamcast port; this overlay lives in beetle-ngp-libretro until drivers can move upstream.
 - The static core archive must be named `libretro_dreamcast.a` in the RetroArch build directory.
 - RGB555 output is used to match the Dreamcast framebuffer (`PM_RGB555`).

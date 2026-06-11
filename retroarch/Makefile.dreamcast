@@ -82,6 +82,7 @@ HAVE_RGUI := 1
 HAVE_MATERIALUI := 0
 
 OBJ := audio/drivers/dc_audio.o \
+	dreamcast/dc_audio.o \
 	gfx/drivers/dc_gfx.o \
 	input/drivers/dc_input.o \
 	input/drivers_joypad/dc_joypad.o \
