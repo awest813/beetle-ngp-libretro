@@ -682,6 +682,9 @@ ifeq ($(STATIC_LINKING), 1)
 else
 	$(LD) $(LINKOUT)$@ $^ $(LDFLAGS) $(LIBS)
 endif
+ifeq ($(platform),dreamcast)
+	cp $@ libretro_dreamcast.a
+endif
 
 %.o: %.cpp
 	$(CXX) -c $(OBJOUT)$@ $< $(CPPFLAGS) $(CXXFLAGS)
@@ -691,6 +694,9 @@ endif
 
 clean:
 	rm -f $(TARGET) $(OBJECTS)
+ifeq ($(platform),dreamcast)
+	rm -f libretro_dreamcast.a
+endif
 
 install:
 	install -D -m 755 $(TARGET) $(DESTDIR)$(libdir)/$(LIBRETRO_DIR)/$(TARGET)

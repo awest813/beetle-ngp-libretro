@@ -1,0 +1,168 @@
+# RetroArch for Sega Dreamcast (KallistiOS / DreamSDK)
+#
+# Prerequisites:
+#   source $KOS_BASE/environ.sh
+#
+# Build (from a patched RetroArch tree):
+#   make -f Makefile.dreamcast
+#
+# Or use ../retroarch/build-retroarch.sh from beetle-ngp-libretro.
+
+ROOT_DIR := .
+DEPS_DIR := $(ROOT_DIR)/deps
+DEBUG ?= 0
+HAVE_LOGGER ?= 0
+HAVE_FILE_LOGGER ?= 0
+HAVE_CC_RESAMPLER ?= 1
+WHOLE_ARCHIVE_LINK ?= 1
+HAVE_STATIC_DUMMY ?= 0
+BIG_STACK ?= 0
+
+TARGET_NAME := retroarch
+EXT_TARGET := $(TARGET_NAME)_dreamcast.elf
+
+ifeq ($(WHOLE_ARCHIVE_LINK), 1)
+   WHOLE_START := -Wl,--whole-archive
+   WHOLE_END := -Wl,--no-whole-archive
+endif
+
+LIB_CORE :=
+ifeq ($(HAVE_STATIC_DUMMY),1)
+   DEFINES += -DHAVE_STATIC_DUMMY
+else
+   LIB_CORE += -lretro_dreamcast
+endif
+
+LIBS := $(WHOLE_START) $(LIB_CORE) $(WHOLE_END) -lstdc++ $(KOS_LIBS)
+
+CC  = kos-cc
+CXX = kos-c++
+LD  = kos-c++
+AR  = kos-ar
+
+INCLUDE += -I. \
+	-I./libretro-common/include \
+	-Ideps \
+	-Ideps/stb
+
+LIBDIRS += -L.
+
+LDFLAGS += -Wl,-Map,$(notdir $(EXT_TARGET)).map
+
+HAVE_RUNAHEAD := 1
+HAVE_DSP_FILTER := 1
+HAVE_VIDEO_FILTER := 1
+HAVE_FILTERS_BUILTIN := 1
+HAVE_THREADS := 1
+HAVE_RPNG := 1
+HAVE_RJPEG := 1
+HAVE_RBMP := 1
+HAVE_RTGA := 1
+HAVE_IBXM := 1
+HAVE_OVERLAY := 1
+HAVE_ZLIB := 1
+HAVE_7ZIP := 1
+HAVE_CONFIGFILE := 1
+HAVE_PATCH := 1
+HAVE_CHEATS := 1
+HAVE_SCREENSHOTS := 1
+HAVE_REWIND := 1
+HAVE_AUDIOMIXER := 1
+HAVE_RWAV := 1
+RARCH_CONSOLE := 1
+HAVE_CORE_INFO_CACHE := 1
+HAVE_MENU_COMMON := 1
+HAVE_MENU := 1
+HAVE_BUILTINZLIB := 1
+HAVE_STATIC_AUDIO_FILTERS := 1
+HAVE_STATIC_VIDEO_FILTERS := 1
+HAVE_XMB := 0
+HAVE_OZONE := 0
+HAVE_RGUI := 1
+HAVE_MATERIALUI := 0
+
+OBJ := audio/drivers/dc_audio.o \
+	gfx/drivers/dc_gfx.o \
+	input/drivers/dc_input.o \
+	input/drivers_joypad/dc_joypad.o \
+	frontend/drivers/platform_dreamcast.o
+
+include Makefile.common
+
+CFLAGS += $(DEFINES)
+CFLAGS += -D__DREAMCAST__ -D__SH4__ -DLSB_FIRST -DARCHITECTURE=Dreamcast
+CFLAGS += -Wall -std=gnu99 -Wno-char-subscripts -DRARCH_INTERNAL
+CFLAGS += -DHAVE_RGUI -DHAVE_MENU -DHAVE_GRIFFIN=1
+CFLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics
+CFLAGS += -ffunction-sections -fdata-sections
+CFLAGS += $(INCLUDE)
+
+LDFLAGS += -Wl,--gc-sections
+
+ifeq ($(HAVE_ZLIB), 1)
+   CFLAGS += -DHAVE_ZLIB
+   CFLAGS += -I./libretro-common/include/compat/zlib
+endif
+
+ifeq ($(RARCH_CONSOLE), 1)
+   CFLAGS += -DRARCH_CONSOLE
+endif
+
+ifeq ($(HAVE_FILTERS_BUILTIN), 1)
+   CFLAGS += -DHAVE_FILTERS_BUILTIN
+endif
+
+ifeq ($(DEBUG), 1)
+   CFLAGS += -O0 -g -DDEBUG
+else
+   CFLAGS += -O2
+endif
+
+ifneq ($(V),1)
+   Q := @
+endif
+
+OBJOUT = -o
+LINKOUT = -o
+LINK = $(CXX)
+
+all: $(EXT_TARGET)
+
+define INFO
+CC: $(CC)
+CFLAGS: $(CFLAGS)
+CXX: $(CXX)
+LD: $(LD)
+LDFLAGS: $(LDFLAGS)
+LIBDIRS: $(LIBDIRS)
+LIBS: $(LIBS)
+OBJ: $(OBJ)
+endef
+export INFO
+
+info:
+ifneq ($(V),1)
+	@echo "$$INFO"
+endif
+
+$(EXT_TARGET): $(OBJ)
+	@$(if $(Q), $(shell echo echo LINK $@),)
+	$(Q)$(LINK) $(LINKOUT)$@ $(LDFLAGS) $(LIBDIRS) $(OBJ) $(LIBS)
+
+%.o: %.c
+	@$(if $(Q), $(shell echo echo CC $<),)
+	$(Q)$(CC) $(CFLAGS) -c $(OBJOUT)$@ $<
+
+%.o: %.cpp
+	@$(if $(Q), $(shell echo echo CXX $<),)
+	$(Q)$(CXX) $(CFLAGS) -c $(OBJOUT)$@ $<
+
+clean:
+	@$(if $(Q), echo $@,)
+	$(Q)rm -f $(EXT_TARGET)
+	$(Q)rm -f $(OBJ)
+
+.PHONY: all clean info
+
+print-%:
+	@echo '$*=$($*)'

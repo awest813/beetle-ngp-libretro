@@ -1,0 +1,190 @@
+--- a/configuration.c
++++ b/configuration.c
+@@ -133,6 +133,7 @@ enum video_driver_enum
+    VIDEO_VGA,
+    VIDEO_FPGA,
+    VIDEO_RSX,
++   VIDEO_DC,
+    VIDEO_NULL
+ };
+ 
+@@ -170,6 +171,7 @@ enum audio_driver_enum
+    AUDIO_CTR,
+    AUDIO_SWITCH,
+    AUDIO_PIPEWIRE,
++   AUDIO_DC,
+    AUDIO_NULL
+ };
+ 
+@@ -217,6 +219,7 @@ enum input_driver_enum
+    INPUT_RWEBINPUT,
+    INPUT_DOS,
+    INPUT_WINRAW,
++   INPUT_DC,
+    INPUT_NULL
+ };
+ 
+@@ -243,6 +246,7 @@ enum joypad_driver_enum
+    JOYPAD_RWEBPAD,
+    JOYPAD_MFI,
+    JOYPAD_WINRAW,
++   JOYPAD_DC,
+    JOYPAD_NULL
+ };
+ 
+@@ -459,6 +463,8 @@ static const enum video_driver_enum VIDEO_DEFAULT_DRIVER = VIDEO_GL1;
+ static const enum video_driver_enum VIDEO_DEFAULT_DRIVER = VIDEO_VULKAN;
+ #elif defined(GEKKO)
+ static const enum video_driver_enum VIDEO_DEFAULT_DRIVER = VIDEO_WII;
++#elif defined(__DREAMCAST__)
++static const enum video_driver_enum VIDEO_DEFAULT_DRIVER = VIDEO_DC;
+ #elif defined(WIIU)
+ static const enum video_driver_enum VIDEO_DEFAULT_DRIVER = VIDEO_WIIU;
+ #elif defined(XENON)
+@@ -514,6 +520,8 @@ static const enum audio_driver_enum AUDIO_DEFAULT_DRIVER = AUDIO_XENON360;
+ static const enum audio_driver_enum AUDIO_DEFAULT_DRIVER = AUDIO_WII;
+ #elif defined(WIIU)
+ static const enum audio_driver_enum AUDIO_DEFAULT_DRIVER = AUDIO_WIIU;
++#elif defined(__DREAMCAST__)
++static const enum audio_driver_enum AUDIO_DEFAULT_DRIVER = AUDIO_DC;
+ #elif defined(PSP) || defined(VITA) || defined(ORBIS)
+ static const enum audio_driver_enum AUDIO_DEFAULT_DRIVER = AUDIO_PSP;
+ #elif defined(PS2)
+@@ -659,6 +667,8 @@ static const enum input_driver_enum INPUT_DEFAULT_DRIVER = INPUT_CTR;
+ static const enum input_driver_enum INPUT_DEFAULT_DRIVER = INPUT_SWITCH;
+ #elif defined(GEKKO)
+ static const enum input_driver_enum INPUT_DEFAULT_DRIVER = INPUT_WII;
++#elif defined(__DREAMCAST__)
++static const enum input_driver_enum INPUT_DEFAULT_DRIVER = INPUT_DC;
+ #elif defined(WIIU)
+ static const enum input_driver_enum INPUT_DEFAULT_DRIVER = INPUT_WIIU;
+ #elif defined(DINGUX) && defined(HAVE_SDL_DINGUX)
+@@ -691,6 +701,8 @@ static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_SDL;
+ static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_XINPUT;
+ #elif defined(GEKKO)
+ static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_GX;
++#elif defined(__DREAMCAST__)
++static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_DC;
+ #elif defined(WIIU)
+ static const enum joypad_driver_enum JOYPAD_DEFAULT_DRIVER = JOYPAD_WIIU;
+ #elif defined(WEBOS)
+@@ -968,6 +980,8 @@ const char *config_get_default_audio(void)
+          return "switch";
+       case AUDIO_PIPEWIRE:
+          return "pipewire";
++      case AUDIO_DC:
++         return "dc";
+       case AUDIO_EXT:
+          return "ext";
+       case AUDIO_NULL:
+@@ -1168,6 +1182,8 @@ const char *config_get_default_video(void)
+          return "fpga";
+       case VIDEO_RSX:
+          return "rsx";
++      case VIDEO_DC:
++         return "dc";
+       case VIDEO_NULL:
+          break;
+    }
+@@ -1235,6 +1251,8 @@ const char *config_get_default_input(void)
+          return "gx";
+       case INPUT_WIIU:
+          return "wiiu";
++      case INPUT_DC:
++         return "dc";
+       case INPUT_LINUXRAW:
+          return "linuxraw";
+       case INPUT_UDEV:
+@@ -1295,6 +1313,8 @@ const char *config_get_default_joypad(void)
+          return "mfi";
+       case JOYPAD_WINRAW:
+          return "winraw";
++      case JOYPAD_DC:
++         return "dc";
+       case JOYPAD_NULL:
+          break;
+    }
+--- a/gfx/video_driver.c
++++ b/gfx/video_driver.c
+@@ -409,6 +409,9 @@ const video_driver_t *video_drivers[] = {
+ #ifdef PSP
+    &video_psp1,
+ #endif
++#ifdef __DREAMCAST__
++   &video_dc,
++#endif
+ #ifdef PS2
+    &video_ps2,
+ #endif
+--- a/gfx/video_driver.h
++++ b/gfx/video_driver.h
+@@ -1410,6 +1410,7 @@ extern video_driver_t video_metal;
+ extern video_driver_t video_psp1;
+ extern video_driver_t video_vita2d;
+ extern video_driver_t video_ps2;
++extern video_driver_t video_dc;
+ extern video_driver_t video_ctr;
+ extern video_driver_t video_gcm;
+ extern video_driver_t video_switch;
+--- a/audio/audio_driver.c
++++ b/audio/audio_driver.c
+@@ -215,6 +215,9 @@ audio_driver_t *audio_drivers[] = {
+ #if defined(PS2)
+   &audio_ps2,
+ #endif
++#ifdef __DREAMCAST__
++   &audio_dc,
++#endif
+ #ifdef _3DS
+    &audio_ctr_csnd,
+    &audio_ctr_dsp,
+--- a/audio/audio_driver.h
++++ b/audio/audio_driver.h
+@@ -378,6 +378,7 @@ extern audio_driver_t audio_ps3;
+ extern audio_driver_t audio_gx;
+ extern audio_driver_t audio_ax;
+ extern audio_driver_t audio_psp;
++extern audio_driver_t audio_dc;
+ extern audio_driver_t audio_ps2;
+ extern audio_driver_t audio_ctr_csnd;
+ extern audio_driver_t audio_ctr_dsp;
+--- a/input/input_driver.c
++++ b/input/input_driver.c
+@@ -272,6 +272,9 @@ input_device_driver_t *joypad_drivers[] = {
+ #ifdef GEKKO
+    &gx_joypad,
+ #endif
++#ifdef __DREAMCAST__
++   &dc_joypad,
++#endif
+ #ifdef WIIU
+    &wiiu_joypad,
+ #endif
+@@ -349,6 +352,9 @@ input_driver_t *input_drivers[] = {
+ #if defined(SWITCH)
+    &input_switch,
+ #endif
++#ifdef __DREAMCAST__
++   &input_dc,
++#endif
+ #ifdef HAVE_X11
+    &input_x,
+ #endif
+--- a/input/input_driver.h
++++ b/input/input_driver.h
+@@ -1230,6 +1230,7 @@ extern input_driver_t input_psp;
+ extern input_driver_t input_ps2;
+ extern input_driver_t input_ctr;
+ extern input_driver_t input_switch;
++extern input_driver_t input_dc;
+ extern input_driver_t input_xenon360;
+ extern input_driver_t input_gx;
+ extern input_driver_t input_wiiu;
+@@ -1258,6 +1259,7 @@ extern input_device_driver_t ps2_joypad;
+ extern input_device_driver_t ctr_joypad;
+ extern input_device_driver_t switch_joypad;
+ extern input_device_driver_t xdk_joypad;
++extern input_device_driver_t dc_joypad;
+ extern input_device_driver_t gx_joypad;
+ extern input_device_driver_t wiiu_joypad;
+ extern input_device_driver_t hid_joypad;
