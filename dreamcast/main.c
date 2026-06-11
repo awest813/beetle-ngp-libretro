@@ -69,10 +69,10 @@ static void apply_video_settings(void)
    if (video_scale > DC_SETTINGS_SCALE_MAX)
       video_scale = DC_SETTINGS_SCALE_MAX;
 
-   dc_video_reinit(output);
+   dc_video_reinit_for_scale(output, video_scale);
 
    if (blitter)
-      dc_video_blitter_set_scale(blitter, video_scale);
+      dc_video_blitter_sync(blitter, video_scale);
 }
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
@@ -395,10 +395,11 @@ int main(int argc, char **argv)
       return 1;
    }
 
-   printf("beetlengp: video %ux%u cable=%s output=%s\n",
+   printf("beetlengp: video %ux%u cable=%s output=%s scale=%ux\n",
          dc_video_width(), dc_video_height(),
          dc_video_cable_name(dc_video_get_cable()),
-         dc_video_output_name((dc_video_output_t)dc_settings_get()->video_output));
+         dc_video_output_name((dc_video_output_t)dc_settings_get()->video_output),
+         video_scale);
 
    controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
 

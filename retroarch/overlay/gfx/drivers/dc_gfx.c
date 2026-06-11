@@ -125,7 +125,7 @@ static void *dc_gfx_init(const video_info_t *video,
    dc_settings_load(dc_settings_get());
    cfg = dc_settings_get();
 
-   dc_video_init((dc_video_output_t)cfg->video_output);
+   dc_video_init_for_scale((dc_video_output_t)cfg->video_output, cfg->scale);
 
    dc->scale       = cfg->scale ? cfg->scale : 3;
    dc->vsync       = video->vsync;

@@ -342,7 +342,9 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    draw_text(20, y, (selected == 4) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "  Cable: %s", dc_video_cable_name(dc_video_get_cable()));
+   snprintf(line, sizeof(line), "  Cable: %s   Mode: %ux%u",
+         dc_video_cable_name(dc_video_get_cable()),
+         dc_video_width(), dc_video_height());
    draw_text(20, y, 0, line);
    y += 20;
    snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
@@ -407,6 +409,8 @@ void menu_settings(void)
             if (scale > DC_SETTINGS_SCALE_MAX)
                scale = DC_SETTINGS_SCALE_MAX;
             settings->scale = (uint8_t)scale;
+            dc_video_reinit_for_scale((dc_video_output_t)settings->video_output,
+                  settings->scale);
             dirty = true;
          }
          else if (selected == 3)
@@ -419,7 +423,8 @@ void menu_settings(void)
                next = 0;
 
             settings->video_output = (uint8_t)next;
-            dc_video_reinit((dc_video_output_t)settings->video_output);
+            dc_video_reinit_for_scale((dc_video_output_t)settings->video_output,
+                  settings->scale);
             dirty = true;
          }
          else if (selected == 4)

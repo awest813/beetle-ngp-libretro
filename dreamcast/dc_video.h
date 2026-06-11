@@ -21,6 +21,7 @@ typedef enum dc_video_output
 typedef struct dc_video_blitter
 {
    uint16_t *buffer;
+   uint16_t *row_scratch;
    unsigned buf_w;
    unsigned buf_h;
    unsigned scale;
@@ -31,8 +32,10 @@ const char *dc_video_cable_name(int8_t cable);
 const char *dc_video_output_name(dc_video_output_t output);
 
 bool dc_video_init(dc_video_output_t output);
+bool dc_video_init_for_scale(dc_video_output_t output, unsigned scale);
 void dc_video_shutdown(void);
 bool dc_video_reinit(dc_video_output_t output);
+bool dc_video_reinit_for_scale(dc_video_output_t output, unsigned scale);
 
 unsigned dc_video_width(void);
 unsigned dc_video_height(void);
@@ -44,6 +47,7 @@ void dc_video_present(const uint16_t *pixels, bool vsync);
 
 dc_video_blitter_t *dc_video_blitter_create(unsigned scale);
 void dc_video_blitter_destroy(dc_video_blitter_t *blitter);
+bool dc_video_blitter_sync(dc_video_blitter_t *blitter, unsigned scale);
 void dc_video_blitter_set_scale(dc_video_blitter_t *blitter, unsigned scale);
 void dc_video_blitter_clear(dc_video_blitter_t *blitter);
 void dc_video_blitter_rgb555(dc_video_blitter_t *blitter,
