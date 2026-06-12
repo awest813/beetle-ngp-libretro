@@ -16,4 +16,9 @@ bool dc_saves_flash_exists(const char *rom_path);
 bool dc_saves_save_state(const char *rom_path);
 bool dc_saves_load_state(const char *rom_path);
 
+/* Flush in-game battery data to <save_dir>/<rom>.flash (core API). */
+bool dc_saves_sync_battery(void);
+/* Reload battery data from <save_dir>/<rom>.flash into the core. */
+bool dc_saves_reload_battery(void);
+
 #endif

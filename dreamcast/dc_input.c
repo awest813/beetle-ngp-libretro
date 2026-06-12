@@ -29,12 +29,16 @@ void dc_input_poll(dc_input_t *input)
 
    input->maple   = 0;
    input->gamepad = 0;
+   input->ltrig   = 0;
+   input->rtrig   = 0;
 
    state = (cont_state_t *)maple_dev_status(dc_input_device(input->port));
    if (!state)
       return;
 
    input->maple = state->buttons;
+   input->ltrig = (uint8_t)state->ltrig;
+   input->rtrig = (uint8_t)state->rtrig;
    buttons      = filter_system_buttons(state->buttons);
 
    if (buttons & CONT_DPAD_UP)
@@ -73,4 +77,34 @@ uint32_t dc_input_maple_buttons(const dc_input_t *input)
       return 0;
 
    return input->maple;
+}
+
+static bool trigger_pressed(uint8_t value, uint8_t *prev)
+{
+   bool pressed = false;
+
+   if (!prev)
+      return false;
+
+   if (value >= DC_INPUT_TRIGGER_THRESHOLD && *prev < DC_INPUT_TRIGGER_THRESHOLD)
+      pressed = true;
+
+   *prev = value;
+   return pressed;
+}
+
+bool dc_input_ltrigger_pressed(const dc_input_t *input, uint8_t *prev_ltrig)
+{
+   if (!input)
+      return false;
+
+   return trigger_pressed(input->ltrig, prev_ltrig);
+}
+
+bool dc_input_rtrigger_pressed(const dc_input_t *input, uint8_t *prev_rtrig)
+{
+   if (!input)
+      return false;
+
+   return trigger_pressed(input->rtrig, prev_rtrig);
 }

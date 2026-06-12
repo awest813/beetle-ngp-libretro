@@ -14,6 +14,9 @@ static void make_basename(const char *rom_path, char *out, size_t out_len)
    const char *base;
    char *dot;
 
+   if (!rom_path || !out || !out_len)
+      return;
+
    base = strrchr(rom_path, '/');
    base = base ? base + 1 : rom_path;
 
@@ -23,6 +26,36 @@ static void make_basename(const char *rom_path, char *out, size_t out_len)
    dot = strrchr(out, '.');
    if (dot)
       *dot = '\0';
+}
+
+static bool write_file_atomic(const char *path, const void *data, size_t size)
+{
+   char tmp[280];
+   FILE *file;
+
+   snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+   file = fopen(tmp, "wb");
+   if (!file)
+      return false;
+
+   if (fwrite(data, 1, size, file) != size)
+   {
+      fclose(file);
+      remove(tmp);
+      return false;
+   }
+
+   fflush(file);
+   fclose(file);
+   remove(path);
+
+   if (rename(tmp, path) != 0)
+   {
+      remove(tmp);
+      return false;
+   }
+
+   return true;
 }
 
 bool dc_saves_ensure_dir(void)
@@ -60,6 +93,9 @@ bool dc_saves_state_exists(const char *rom_path)
    char path[256];
    FILE *file;
 
+   if (!rom_path)
+      return false;
+
    dc_saves_state_path(rom_path, path, sizeof(path));
    file = fopen(path, "rb");
    if (!file)
@@ -73,6 +109,9 @@ bool dc_saves_flash_exists(const char *rom_path)
 {
    char path[256];
    FILE *file;
+
+   if (!rom_path)
+      return false;
 
    dc_saves_flash_path(rom_path, path, sizeof(path));
    file = fopen(path, "rb");
@@ -88,7 +127,9 @@ bool dc_saves_save_state(const char *rom_path)
    char path[256];
    size_t size;
    void *buffer;
-   FILE *file;
+
+   if (!rom_path)
+      return false;
 
    size = retro_serialize_size();
    if (!size)
@@ -104,16 +145,20 @@ bool dc_saves_save_state(const char *rom_path)
       return false;
    }
 
-   dc_saves_state_path(rom_path, path, sizeof(path));
-   file = fopen(path, "wb");
-   if (!file)
+   if (!dc_saves_ensure_dir())
    {
       free(buffer);
       return false;
    }
 
-   fwrite(buffer, 1, size, file);
-   fclose(file);
+   dc_saves_state_path(rom_path, path, sizeof(path));
+
+   if (!write_file_atomic(path, buffer, size))
+   {
+      free(buffer);
+      return false;
+   }
+
    free(buffer);
    return true;
 }
@@ -125,6 +170,9 @@ bool dc_saves_load_state(const char *rom_path)
    void *buffer;
    FILE *file;
    long file_size;
+
+   if (!rom_path)
+      return false;
 
    dc_saves_state_path(rom_path, path, sizeof(path));
    file = fopen(path, "rb");

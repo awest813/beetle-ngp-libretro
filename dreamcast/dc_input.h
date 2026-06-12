@@ -5,15 +5,21 @@
 #include <stdint.h>
 
 /* Dreamcast controller -> libretro joypad (Beetle NGP mapping). */
+#define DC_INPUT_TRIGGER_THRESHOLD 160
+
 typedef struct dc_input
 {
    unsigned port;
    uint32_t maple;
    uint32_t gamepad;
+   uint8_t ltrig;
+   uint8_t rtrig;
 } dc_input_t;
 
 void dc_input_poll(dc_input_t *input);
 int16_t dc_input_state(const dc_input_t *input, unsigned device, unsigned id);
 uint32_t dc_input_maple_buttons(const dc_input_t *input);
+bool dc_input_ltrigger_pressed(const dc_input_t *input, uint8_t *prev_ltrig);
+bool dc_input_rtrigger_pressed(const dc_input_t *input, uint8_t *prev_rtrig);
 
 #endif

@@ -1,5 +1,6 @@
 #include "menu.h"
 
+#include "dc_saves.h"
 #include "dc_settings.h"
 #include "dc_ui.h"
 #include "dc_video.h"
@@ -304,7 +305,8 @@ menu_action_t menu_main(char **rom_path_out)
    return action;
 }
 
-static void draw_settings_menu(int selected, const dc_settings_t *settings)
+static void draw_settings_menu(int selected, const dc_settings_t *settings,
+      const char *rom_path)
 {
    char line[80];
    int y = 24;
@@ -380,9 +382,21 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    y += 20;
    snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
    draw_text(20, y, 0, line);
+   y += 20;
+
+   if (rom_path)
+   {
+      snprintf(line, sizeof(line), "  State: %s   Battery: %s",
+            dc_saves_state_exists(rom_path) ? "yes" : "no",
+            dc_saves_flash_exists(rom_path) ? "yes" : "no");
+      draw_text(20, y, 0, line);
+      y += 20;
+   }
+
+   draw_text(20, y, 0, "  Start+Y/X state  L/R battery");
 }
 
-void menu_settings(void)
+void menu_settings_for_rom(const char *rom_path)
 {
    dc_settings_t *settings = dc_settings_get();
    cont_state_t *state;
@@ -396,7 +410,7 @@ void menu_settings(void)
    {
       uint32_t pressed;
 
-      draw_settings_menu(selected, settings);
+      draw_settings_menu(selected, settings, rom_path);
       dc_ui_present(true);
 
       state = poll_controller();
@@ -518,4 +532,9 @@ void menu_settings(void)
       dc_settings_save(settings);
 
    dc_video_menu_end();
+}
+
+void menu_settings(void)
+{
+   menu_settings_for_rom(NULL);
 }

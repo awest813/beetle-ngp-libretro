@@ -39,6 +39,10 @@ static dc_input_t player_input;
 static dc_audio_stream_t *audio_stream;
 static const char *loaded_rom_path;
 static uint32_t previous_buttons;
+static uint8_t previous_ltrig;
+static uint8_t previous_rtrig;
+
+#define DC_TRIGGER_HOTKEY_MASK (CONT_START)
 
 typedef enum hotkey_action
 {
@@ -264,6 +268,24 @@ static const char *pick_rom_path(int argc, char **argv, char **menu_owned_out)
    return NULL;
 }
 
+static void save_battery_with_notify(void)
+{
+   const dc_settings_t *cfg = dc_settings_get();
+
+   dc_saves_sync_battery();
+
+   if (cfg->vmu_save_sync)
+      dc_vmu_sync_flash_to_vmu(loaded_rom_path);
+
+   if (dc_saves_flash_exists(loaded_rom_path))
+   {
+      dc_vmu_set_game(loaded_rom_path, true);
+      dc_notify_show("Battery saved", 90);
+   }
+   else
+      dc_notify_show("Battery save failed", 90);
+}
+
 static hotkey_action_t handle_hotkeys(uint32_t buttons)
 {
    uint32_t pressed;
@@ -271,7 +293,10 @@ static hotkey_action_t handle_hotkeys(uint32_t buttons)
    pressed = buttons & ~previous_buttons;
    previous_buttons = buttons;
 
-   if ((buttons & CONT_START) && (pressed & CONT_Y))
+   if (!loaded_rom_path)
+      return HOTKEY_NONE;
+
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_Y))
    {
       if (dc_saves_save_state(loaded_rom_path))
          dc_notify_show("State saved", 90);
@@ -279,7 +304,7 @@ static hotkey_action_t handle_hotkeys(uint32_t buttons)
          dc_notify_show("Save failed", 90);
    }
 
-   if ((buttons & CONT_START) && (pressed & CONT_X))
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_X))
    {
       if (dc_saves_load_state(loaded_rom_path))
          dc_notify_show("State loaded", 90);
@@ -287,10 +312,26 @@ static hotkey_action_t handle_hotkeys(uint32_t buttons)
          dc_notify_show("Load failed", 90);
    }
 
-   if ((buttons & CONT_START) && (pressed & CONT_A))
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK)
+         && dc_input_ltrigger_pressed(&player_input, &previous_ltrig))
+      save_battery_with_notify();
+
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK)
+         && dc_input_rtrigger_pressed(&player_input, &previous_rtrig))
+   {
+      if (dc_saves_flash_exists(loaded_rom_path))
+      {
+         dc_saves_reload_battery();
+         dc_notify_show("Battery loaded", 90);
+      }
+      else
+         dc_notify_show("No battery file", 90);
+   }
+
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_A))
       return HOTKEY_SETTINGS;
 
-   if ((buttons & CONT_START) && (pressed & CONT_B))
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_B))
       return HOTKEY_QUIT;
 
    return HOTKEY_NONE;
@@ -422,19 +463,28 @@ int main(int argc, char **argv)
       buttons = dc_input_maple_buttons(&player_input);
 
       action = handle_hotkeys(buttons);
+
+      if (!(buttons & CONT_START))
+      {
+         previous_ltrig = player_input.ltrig;
+         previous_rtrig = player_input.rtrig;
+      }
+
       if (action == HOTKEY_QUIT)
          break;
 
       if (action == HOTKEY_SETTINGS)
       {
          dc_audio_pause(audio_stream);
-         menu_settings();
+         menu_settings_for_rom(loaded_rom_path);
          apply_video_settings();
          apply_audio_settings();
          apply_vmu_settings();
          dc_saves_ensure_dir();
          dc_audio_resume(audio_stream);
          previous_buttons = 0;
+         previous_ltrig   = 0;
+         previous_rtrig   = 0;
       }
 
       if (audio_stream)

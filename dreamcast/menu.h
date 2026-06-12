@@ -19,4 +19,7 @@ char *menu_pick_rom(void);
 /* Settings editor; saves to beetlengp.cfg on exit. */
 void menu_settings(void);
 
+/* Settings with optional ROM path for save-file status (in-game). */
+void menu_settings_for_rom(const char *rom_path);
+
 #endif

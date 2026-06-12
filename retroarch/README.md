@@ -75,6 +75,8 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 | Start + B | Exit (standalone launcher only) |
 | Start + X | Load save state (standalone launcher) |
 | Start + Y | Save save state (standalone launcher) |
+| Start + L trigger | Save battery (`.flash`) + optional VMU sync |
+| Start + R trigger | Reload battery from `.flash` |
 | DC B | NGP A button |
 | DC A | NGP B button |
 | DC Start | NGP Option button |
