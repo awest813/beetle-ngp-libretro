@@ -94,8 +94,9 @@ void dc_video_blitter_present(dc_video_blitter_t *b, bool vsync)
 
 | Optimization | Benefit |
 |--------------|---------|
-| `pvr_txr_load_dma` (blocking) | Hardware DMA texture upload |
+| `pvr_txr_load_dma` (non-blocking) | DMA upload overlaps PVR scene render |
 | Double-buffered PVR texture | Ping-pong staging + VRAM textures |
+| Dirty frame skip | Skip DMA when staging matches last frame |
 | Frame dup (`src == NULL`) | Skip upload; redraw last texture + overlay |
 | PVR notification overlay | Toasts on translucent TR poly (`dc_notify.c`) |
 | 256×256 padded texture | Stride mode for 160×152 game framebuffer |
@@ -120,16 +121,29 @@ Launcher and RetroArch pass `NULL` to `video_refresh` / `dc_gfx_frame` on frame 
 | Interlaced TV modes | Test Phase 2 on `DM_640x480_NTSC_IL`; may need field flag |
 | RetroArch RGUI on PVR | RGUI may need software blit overlay until Phase 5 |
 
-## Phase 5 — PVR UI (launcher)
+## Phase 5 — PVR UI (launcher + pause)
 
 **Status:** Implemented in `dc_ui.c` / `dc_pvr_present_ui()`.
 
-- Menus draw with `bfont` into a linear RGB555 buffer (`dc_ui_begin_frame` / `dc_ui_draw_text`).
+- Shared UI toolkit: headers, footers, panels, scrollable lists, scrollbars (`dc_ui_*`).
+- Launcher menus (main, ROM browser, settings) and in-game pause overlay use the same theme.
+- Settings list scrolls on 320×240; status panel shows VMU/cable/save info.
 - `dc_ui_present` uploads the full screen and draws a 1:1 PVR quad when `renderer=pvr`.
+- Toasts (`dc_notify`) reuse `DC_UI_COLOR_ACCENT` for a consistent look.
 - `dc_video_menu_begin/end` use a depth counter; PVR is no longer torn down for menus.
 - RetroArch RGUI uses the video poke interface (`set_texture_frame` / `set_texture_enable`) to composite a translucent PVR menu overlay in `dc_gfx.c`.
 
-VMU preview remains on Maple LCD (`vmufb`); load-from-VMU skips the 512-byte `/vmu/` file header when present.
+### Controls
+
+| Context | Input |
+|---------|--------|
+| Launcher | D-Pad move, A select, B/Start cancel |
+| In-game pause | Start (alone) opens menu; Start+Y/X/L/R quick save/load/battery |
+| Settings | Left/Right change values, A toggles booleans, B saves and exits |
+
+VMU preview remains on Maple LCD (`vmufb`). VMU flash mirroring uses `vmu_pkg_build` /
+`vmu_pkg_parse` for BIOS-visible `.FLA` files, with periodic Maple rescan and a
+built-in 32×32 icon.
 
 ## Suggested implementation order
 

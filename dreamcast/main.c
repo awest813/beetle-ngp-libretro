@@ -47,6 +47,7 @@ static uint8_t previous_rtrig;
 typedef enum hotkey_action
 {
    HOTKEY_NONE = 0,
+   HOTKEY_PAUSE,
    HOTKEY_QUIT,
    HOTKEY_SETTINGS
 } hotkey_action_t;
@@ -335,6 +336,10 @@ static hotkey_action_t handle_hotkeys(uint32_t buttons)
          dc_notify_show("No battery file", 90);
    }
 
+   if ((pressed & CONT_START)
+         && !(pressed & (CONT_A | CONT_B | CONT_X | CONT_Y)))
+      return HOTKEY_PAUSE;
+
    if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_A))
       return HOTKEY_SETTINGS;
 
@@ -479,6 +484,47 @@ int main(int argc, char **argv)
 
       if (action == HOTKEY_QUIT)
          break;
+
+      if (action == HOTKEY_PAUSE)
+      {
+         menu_pause_action_t pause_action;
+
+         dc_audio_pause(audio_stream);
+         pause_action = menu_pause(loaded_rom_path);
+
+         if (pause_action == MENU_PAUSE_SAVE)
+         {
+            if (dc_saves_save_state(loaded_rom_path))
+               dc_notify_show("State saved", 90);
+            else
+               dc_notify_show("Save failed", 90);
+         }
+         else if (pause_action == MENU_PAUSE_LOAD)
+         {
+            if (dc_saves_load_state(loaded_rom_path))
+               dc_notify_show("State loaded", 90);
+            else
+               dc_notify_show("Load failed", 90);
+         }
+         else if (pause_action == MENU_PAUSE_SETTINGS)
+         {
+            menu_settings_for_rom(loaded_rom_path);
+            apply_video_settings();
+            apply_audio_settings();
+            apply_vmu_settings();
+            dc_saves_ensure_dir();
+         }
+         else if (pause_action == MENU_PAUSE_QUIT)
+         {
+            dc_audio_resume(audio_stream);
+            break;
+         }
+
+         dc_audio_resume(audio_stream);
+         previous_buttons = 0;
+         previous_ltrig   = 0;
+         previous_rtrig   = 0;
+      }
 
       if (action == HOTKEY_SETTINGS)
       {

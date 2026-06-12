@@ -1,5 +1,6 @@
 #include "menu.h"
 
+#include "dc_input.h"
 #include "dc_saves.h"
 #include "dc_settings.h"
 #include "dc_ui.h"
@@ -7,7 +8,6 @@
 #include "dc_vmu.h"
 
 #include <kos.h>
-#include <dc/maple/controller.h>
 
 #include <dirent.h>
 #include <stdbool.h>
@@ -18,6 +18,8 @@
 
 #define MAX_ROM_ENTRIES 64
 #define ROM_NAME_LEN    48
+#define SETTINGS_COUNT  10
+
 typedef struct
 {
    char path[256];
@@ -37,24 +39,13 @@ static const char *scan_dirs[] = {
 static rom_entry_t roms[MAX_ROM_ENTRIES];
 static int rom_count;
 
-static cont_state_t *poll_controller(void)
-{
-   maple_device_t *device = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
-
-   if (!device)
-      return NULL;
-
-   return (cont_state_t *)maple_dev_status(device);
-}
-
-static void clear_screen(void)
+static void menu_frame_begin(const char *title, const char *subtitle,
+      const char *footer)
 {
    dc_ui_begin_frame();
-}
-
-static void draw_text(int x, int y, int color, const char *text)
-{
-   dc_ui_draw_text(x, y, color, text);
+   dc_ui_draw_header(title, subtitle);
+   if (footer)
+      dc_ui_draw_footer(footer);
 }
 
 static bool has_rom_extension(const char *name)
@@ -116,160 +107,75 @@ static void collect_roms(void)
       scan_directory(scan_dirs[i]);
 }
 
-static void draw_rom_menu(int selected)
-{
-   int y = 24;
-   int i;
-
-   clear_screen();
-   draw_text(20, y, 1, "Beetle NGP - Select ROM");
-   y += 24;
-   draw_text(20, y, 1, "D-Pad: move   A: load   B: back");
-   y += 32;
-
-   if (rom_count == 0)
-   {
-      draw_text(20, y, 1, "No ROMs found on /sd or /ide");
-      return;
-   }
-
-   for (i = 0; i < rom_count; i++)
-   {
-      char line[ROM_NAME_LEN + 4];
-
-      if (i < selected - 8)
-         continue;
-      if (i > selected + 12)
-         break;
-
-      snprintf(line, sizeof(line), "%s%s",
-            (i == selected) ? "> " : "  ", roms[i].name);
-      draw_text(20, y, (i == selected) ? 1 : 0, line);
-      y += 20;
-   }
-}
-
-char *menu_pick_rom(void)
-{
-   cont_state_t *state;
-   uint32_t previous = 0;
-   int selected = 0;
-   char *result = NULL;
-
-   collect_roms();
-   if (rom_count == 0)
-      return NULL;
-
-   for (;;)
-   {
-      uint32_t pressed;
-
-      draw_rom_menu(selected);
-      dc_ui_present(true);
-
-      state = poll_controller();
-      if (!state)
-      {
-         thd_sleep(16);
-         continue;
-      }
-
-      pressed = state->buttons & ~previous;
-      previous = state->buttons;
-
-      if (pressed & CONT_DPAD_UP)
-      {
-         if (selected > 0)
-            selected--;
-      }
-      else if (pressed & CONT_DPAD_DOWN)
-      {
-         if (selected < rom_count - 1)
-            selected++;
-      }
-      else if (pressed & CONT_A)
-      {
-         result = strdup(roms[selected].path);
-         break;
-      }
-      else if (pressed & CONT_B || pressed & CONT_START)
-         break;
-
-      thd_sleep(16);
-   }
-
-   return result;
-}
-
-static void draw_main_menu(int selected)
+static void draw_main_menu(dc_ui_list_t *list)
 {
    static const char *items[] = {
       "Load Game",
       "Settings",
       "Exit",
    };
-   int y = 48;
-   size_t i;
+   dc_ui_layout_t layout;
+   int i;
+   int y;
+   int count = (int)(sizeof(items) / sizeof(items[0]));
+   int visible = dc_ui_list_visible_rows(list);
+   int row_w;
 
-   clear_screen();
-   draw_text(20, 24, 1, "Beetle NeoGeo Pocket");
-   draw_text(20, 48, 1, "D-Pad: move   A: select   B: cancel");
+   dc_ui_get_layout(&layout);
+   row_w = (int)layout.width - layout.margin_x * 2 - 12;
 
-   y = 96;
-   for (i = 0; i < sizeof(items) / sizeof(items[0]); i++)
+   menu_frame_begin("Beetle NeoGeo Pocket", "D-Pad: move   A: select   B: cancel",
+         NULL);
+
+   y = list->content_y;
+   for (i = list->scroll; i < count && i < list->scroll + visible; i++)
    {
-      char line[48];
-
-      snprintf(line, sizeof(line), "%s%s",
-            (int)i == selected ? "> " : "  ", items[i]);
-      draw_text(40, y, ((int)i == selected) ? 1 : 0, line);
-      y += 28;
+      dc_ui_draw_menu_row(y, row_w, i == list->selected, items[i], NULL);
+      y += list->row_h;
    }
+
+   dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
+         list->content_y, list->content_h, count, visible, list->scroll);
+   dc_ui_draw_footer("Dreamcast launcher");
 }
 
 menu_action_t menu_main(char **rom_path_out)
 {
-   cont_state_t *state;
-   uint32_t previous = 0;
-   int selected = 0;
+   dc_menu_input_t input;
+   dc_ui_layout_t layout;
+   dc_ui_list_t list;
    menu_action_t action = MENU_ACTION_NONE;
    char *picked = NULL;
+   int count = 3;
 
    if (rom_path_out)
       *rom_path_out = NULL;
 
    dc_video_menu_begin();
+   dc_menu_input_reset(&input);
+   dc_ui_get_layout(&layout);
+   dc_ui_list_init(&list, &layout);
 
    for (;;)
    {
       uint32_t pressed;
 
-      draw_main_menu(selected);
+      draw_main_menu(&list);
       dc_ui_present(true);
 
-      state = poll_controller();
-      if (!state)
+      if (!dc_menu_input_poll(&input, 0, &pressed))
       {
          thd_sleep(16);
          continue;
       }
 
-      pressed = state->buttons & ~previous;
-      previous = state->buttons;
-
       if (pressed & CONT_DPAD_UP)
-      {
-         if (selected > 0)
-            selected--;
-      }
+         dc_ui_list_move(&list, -1, count);
       else if (pressed & CONT_DPAD_DOWN)
-      {
-         if (selected < 2)
-            selected++;
-      }
+         dc_ui_list_move(&list, 1, count);
       else if (pressed & CONT_A)
       {
-         if (selected == 0)
+         if (list.selected == 0)
          {
             picked = menu_pick_rom();
             if (picked)
@@ -282,10 +188,8 @@ menu_action_t menu_main(char **rom_path_out)
             }
             break;
          }
-         else if (selected == 1)
-         {
+         else if (list.selected == 1)
             menu_settings();
-         }
          else
          {
             action = MENU_ACTION_QUIT;
@@ -305,150 +209,252 @@ menu_action_t menu_main(char **rom_path_out)
    return action;
 }
 
-static void draw_settings_menu(int selected, const dc_settings_t *settings,
-      const char *rom_path)
+static void draw_rom_menu(dc_ui_list_t *list)
 {
-   char line[80];
-   int y = 24;
+   dc_ui_layout_t layout;
+   char subtitle[64];
+   int i;
+   int y;
+   int visible;
+   int row_w;
 
-   clear_screen();
-   draw_text(20, y, 1, "Settings");
-   y += 24;
-   draw_text(20, y, 1, "Left/Right: change   A: toggle   B: save");
-   y += 32;
+   dc_ui_get_layout(&layout);
+   visible = dc_ui_list_visible_rows(list);
+   row_w     = (int)layout.width - layout.margin_x * 2 - 12;
 
-   snprintf(line, sizeof(line), "%sVolume: %3u",
-         (selected == 0) ? "> " : "  ", settings->volume);
-   draw_text(20, y, (selected == 0) ? 1 : 0, line);
-   y += 24;
+   snprintf(subtitle, sizeof(subtitle), "%d ROM(s) found   D-Pad: move   A: load   B: back",
+         rom_count);
 
-   snprintf(line, sizeof(line), "%sScale: %ux",
-         (selected == 1) ? "> " : "  ", settings->scale);
-   draw_text(20, y, (selected == 1) ? 1 : 0, line);
-   y += 24;
+   menu_frame_begin("Select ROM", subtitle, NULL);
 
-   snprintf(line, sizeof(line), "%sAudio: %s",
-         (selected == 2) ? "> " : "  ",
-         settings->audio_enabled ? "ON" : "OFF");
-   draw_text(20, y, (selected == 2) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sVideo: %s",
-         (selected == 3) ? "> " : "  ",
-         dc_video_output_name((dc_video_output_t)settings->video_output));
-   draw_text(20, y, (selected == 3) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sRenderer: %s",
-         (selected == 4) ? "> " : "  ",
-         dc_video_renderer_name((dc_video_renderer_t)settings->video_renderer));
-   draw_text(20, y, (selected == 4) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sVSync: %s",
-         (selected == 5) ? "> " : "  ",
-         settings->vsync ? "ON" : "OFF");
-   draw_text(20, y, (selected == 5) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sAuto load: %s",
-         (selected == 6) ? "> " : "  ",
-         settings->auto_load_state ? "ON" : "OFF");
-   draw_text(20, y, (selected == 6) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sVMU LCD: %s",
-         (selected == 7) ? "> " : "  ",
-         settings->vmu_lcd ? "ON" : "OFF");
-   draw_text(20, y, (selected == 7) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sVMU save: %s",
-         (selected == 8) ? "> " : "  ",
-         settings->vmu_save_sync ? "ON" : "OFF");
-   draw_text(20, y, (selected == 8) ? 1 : 0, line);
-   y += 24;
-
-   snprintf(line, sizeof(line), "%sSave dir: %s",
-         (selected == 9) ? "> " : "  ", settings->save_dir);
-   draw_text(20, y, (selected == 9) ? 1 : 0, line);
-   y += 24;
-
+   if (rom_count == 0)
    {
-      char vmu_slot[16] = "-";
-
-      if (dc_vmu_device_count() > 0)
-         dc_vmu_get_slot_path(0, vmu_slot, sizeof(vmu_slot));
-
-      snprintf(line, sizeof(line), "  VMU: %u (%s)  %ux%u",
-            dc_vmu_device_count(), vmu_slot,
-            dc_video_width(), dc_video_height());
-      draw_text(20, y, 0, line);
-      y += 20;
+      dc_ui_draw_text(layout.margin_x, list->content_y, DC_UI_COLOR_TEXT,
+            "No ROMs found on /sd or /ide");
+      dc_ui_draw_footer("Place .ngp/.ngc files under /sd/ngp");
+      return;
    }
 
-   snprintf(line, sizeof(line), "  Cable: %s",
-         dc_video_cable_name(dc_video_get_cable()));
-   draw_text(20, y, 0, line);
-   y += 20;
-   snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
-   draw_text(20, y, 0, line);
-   y += 20;
-
-   if (rom_path)
+   y = list->content_y;
+   for (i = list->scroll; i < rom_count && i < list->scroll + visible; i++)
    {
-      snprintf(line, sizeof(line), "  State: %s   Battery: %s",
-            dc_saves_state_exists(rom_path) ? "yes" : "no",
-            dc_saves_flash_exists(rom_path) ? "yes" : "no");
-      draw_text(20, y, 0, line);
-      y += 20;
+      dc_ui_draw_menu_row(y, row_w, i == list->selected, roms[i].name, NULL);
+      y += list->row_h;
    }
 
-   draw_text(20, y, 0, "  Start+Y/X state  L/R battery");
+   dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
+         list->content_y, list->content_h, rom_count, visible, list->scroll);
+
+   snprintf(subtitle, sizeof(subtitle), "%d / %d", list->selected + 1, rom_count);
+   dc_ui_draw_footer(subtitle);
 }
 
-void menu_settings_for_rom(const char *rom_path)
+char *menu_pick_rom(void)
 {
-   dc_settings_t *settings = dc_settings_get();
-   cont_state_t *state;
-   uint32_t previous = 0;
-   int selected = 0;
-   bool dirty = false;
+   dc_menu_input_t input;
+   dc_ui_layout_t layout;
+   dc_ui_list_t list;
+   char *result = NULL;
 
-   dc_video_menu_begin();
+   collect_roms();
+
+   dc_menu_input_reset(&input);
+   dc_ui_get_layout(&layout);
+   dc_ui_list_init(&list, &layout);
+
+   if (rom_count > 0)
+      dc_ui_list_clamp(&list, rom_count);
 
    for (;;)
    {
       uint32_t pressed;
 
-      draw_settings_menu(selected, settings, rom_path);
+      draw_rom_menu(&list);
       dc_ui_present(true);
 
-      state = poll_controller();
-      if (!state)
+      if (!dc_menu_input_poll(&input, 0, &pressed))
       {
          thd_sleep(16);
          continue;
       }
 
-      pressed = state->buttons & ~previous;
-      previous = state->buttons;
+      if (rom_count == 0)
+      {
+         if (pressed & (CONT_A | CONT_B | CONT_START))
+            break;
+      }
+      else if (pressed & CONT_DPAD_UP)
+         dc_ui_list_move(&list, -1, rom_count);
+      else if (pressed & CONT_DPAD_DOWN)
+         dc_ui_list_move(&list, 1, rom_count);
+      else if (pressed & CONT_A)
+      {
+         result = strdup(roms[list.selected].path);
+         break;
+      }
+      else if (pressed & CONT_B || pressed & CONT_START)
+         break;
+
+      thd_sleep(16);
+   }
+
+   return result;
+}
+
+static void format_setting_value(int index, const dc_settings_t *settings,
+      char *value, size_t value_len)
+{
+   switch (index)
+   {
+      case 0:
+         snprintf(value, value_len, "%3u", settings->volume);
+         break;
+      case 1:
+         snprintf(value, value_len, "%ux", settings->scale);
+         break;
+      case 2:
+         snprintf(value, value_len, "%s", settings->audio_enabled ? "ON" : "OFF");
+         break;
+      case 3:
+         snprintf(value, value_len, "%s",
+               dc_video_output_name((dc_video_output_t)settings->video_output));
+         break;
+      case 4:
+         snprintf(value, value_len, "%s",
+               dc_video_renderer_name((dc_video_renderer_t)settings->video_renderer));
+         break;
+      case 5:
+         snprintf(value, value_len, "%s", settings->vsync ? "ON" : "OFF");
+         break;
+      case 6:
+         snprintf(value, value_len, "%s",
+               settings->auto_load_state ? "ON" : "OFF");
+         break;
+      case 7:
+         snprintf(value, value_len, "%s", settings->vmu_lcd ? "ON" : "OFF");
+         break;
+      case 8:
+         snprintf(value, value_len, "%s", settings->vmu_save_sync ? "ON" : "OFF");
+         break;
+      case 9:
+         snprintf(value, value_len, "%s", settings->save_dir);
+         break;
+      default:
+         value[0] = '\0';
+         break;
+   }
+}
+
+static void draw_settings_menu(dc_ui_list_t *list, const dc_settings_t *settings,
+      const char *rom_path)
+{
+   static const char *labels[SETTINGS_COUNT] = {
+      "Volume",
+      "Scale",
+      "Audio",
+      "Video",
+      "Renderer",
+      "VSync",
+      "Auto load state",
+      "VMU LCD",
+      "VMU save sync",
+      "Save directory",
+   };
+   dc_ui_layout_t layout;
+   dc_ui_list_t draw_list;
+   char value[64];
+   char line[96];
+   int i;
+   int y;
+   int visible;
+   int row_w;
+   int status_y;
+   int status_h = 52;
+
+   dc_ui_get_layout(&layout);
+   draw_list = *list;
+   draw_list.content_h -= status_h;
+   if (draw_list.content_h < draw_list.row_h * 2)
+      draw_list.content_h = draw_list.row_h * 2;
+   dc_ui_list_clamp(&draw_list, SETTINGS_COUNT);
+   visible = dc_ui_list_visible_rows(&draw_list);
+   row_w   = (int)layout.width - layout.margin_x * 2 - 12;
+
+   menu_frame_begin("Settings", "Left/Right: change   A: toggle   B: save & back",
+         "Start+Y/X state   L/R battery (in-game)");
+
+   y = draw_list.content_y;
+   for (i = draw_list.scroll; i < SETTINGS_COUNT && i < draw_list.scroll + visible; i++)
+   {
+      format_setting_value(i, settings, value, sizeof(value));
+      dc_ui_draw_menu_row(y, row_w, i == draw_list.selected, labels[i], value);
+      y += draw_list.row_h;
+   }
+
+   dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
+         draw_list.content_y, draw_list.content_h, SETTINGS_COUNT, visible,
+         draw_list.scroll);
+
+   status_y = draw_list.content_y + draw_list.content_h + 4;
+   dc_ui_draw_panel(layout.margin_x, status_y,
+         (int)layout.width - layout.margin_x * 2, status_h - 4);
+
+   snprintf(line, sizeof(line), "VMU: %u   %ux%u   %s",
+         dc_vmu_device_count(), dc_video_width(), dc_video_height(),
+         dc_video_cable_name(dc_video_get_cable()));
+   dc_ui_draw_text(layout.margin_x + 8, status_y + 8, DC_UI_COLOR_TEXT_DIM, line);
+
+   snprintf(line, sizeof(line), "Config: %s", DC_SETTINGS_PATH);
+   dc_ui_draw_text(layout.margin_x + 8, status_y + 24, DC_UI_COLOR_TEXT_DIM, line);
+
+   if (rom_path)
+   {
+      snprintf(line, sizeof(line), "State: %s   Battery: %s",
+            dc_saves_state_exists(rom_path) ? "yes" : "no",
+            dc_saves_flash_exists(rom_path) ? "yes" : "no");
+      dc_ui_draw_text(layout.margin_x + 8, status_y + 40, DC_UI_COLOR_TEXT_DIM, line);
+   }
+}
+
+void menu_settings_for_rom(const char *rom_path)
+{
+   dc_settings_t *settings = dc_settings_get();
+   dc_menu_input_t input;
+   dc_ui_layout_t layout;
+   dc_ui_list_t list;
+   bool dirty = false;
+
+   dc_video_menu_begin();
+   dc_menu_input_reset(&input);
+   dc_ui_get_layout(&layout);
+   dc_ui_list_init(&list, &layout);
+   list.content_h -= 52;
+   if (list.content_h < list.row_h * 2)
+      list.content_h = list.row_h * 2;
+   dc_ui_list_clamp(&list, SETTINGS_COUNT);
+
+   for (;;)
+   {
+      uint32_t pressed;
+
+      draw_settings_menu(&list, settings, rom_path);
+      dc_ui_present(true);
+
+      if (!dc_menu_input_poll(&input, 0, &pressed))
+      {
+         thd_sleep(16);
+         continue;
+      }
 
       if (pressed & CONT_DPAD_UP)
-      {
-         if (selected > 0)
-            selected--;
-      }
+         dc_ui_list_move(&list, -1, SETTINGS_COUNT);
       else if (pressed & CONT_DPAD_DOWN)
-      {
-         if (selected < 9)
-            selected++;
-      }
+         dc_ui_list_move(&list, 1, SETTINGS_COUNT);
       else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
       {
          int delta = (pressed & CONT_DPAD_RIGHT) ? 1 : -1;
 
-         if (selected == 0)
+         if (list.selected == 0)
          {
             int vol = (int)settings->volume + delta * 10;
 
@@ -459,7 +465,7 @@ void menu_settings_for_rom(const char *rom_path)
             settings->volume = (uint8_t)vol;
             dirty = true;
          }
-         else if (selected == 1)
+         else if (list.selected == 1)
          {
             int scale = (int)settings->scale + delta;
 
@@ -472,7 +478,7 @@ void menu_settings_for_rom(const char *rom_path)
                   settings->scale);
             dirty = true;
          }
-         else if (selected == 3)
+         else if (list.selected == 3)
          {
             int next = (int)settings->video_output + delta;
 
@@ -486,7 +492,7 @@ void menu_settings_for_rom(const char *rom_path)
                   settings->scale);
             dirty = true;
          }
-         else if (selected == 4)
+         else if (list.selected == 4)
          {
             int next = (int)settings->video_renderer + delta;
 
@@ -499,7 +505,7 @@ void menu_settings_for_rom(const char *rom_path)
             dc_video_set_renderer((dc_video_renderer_t)settings->video_renderer);
             dirty = true;
          }
-         else if (selected == 9)
+         else if (list.selected == 9)
          {
             if (delta > 0)
             {
@@ -518,19 +524,19 @@ void menu_settings_for_rom(const char *rom_path)
       }
       else if (pressed & CONT_A)
       {
-         if (selected == 2)
+         if (list.selected == 2)
             settings->audio_enabled = !settings->audio_enabled;
-         else if (selected == 5)
+         else if (list.selected == 5)
             settings->vsync = !settings->vsync;
-         else if (selected == 6)
+         else if (list.selected == 6)
             settings->auto_load_state = !settings->auto_load_state;
-         else if (selected == 7)
+         else if (list.selected == 7)
             settings->vmu_lcd = !settings->vmu_lcd;
-         else if (selected == 8)
+         else if (list.selected == 8)
             settings->vmu_save_sync = !settings->vmu_save_sync;
 
-         if (selected == 2 || selected == 5 || selected == 6
-               || selected == 7 || selected == 8)
+         if (list.selected == 2 || list.selected == 5 || list.selected == 6
+               || list.selected == 7 || list.selected == 8)
             dirty = true;
       }
       else if (pressed & CONT_B || pressed & CONT_START)
@@ -548,4 +554,110 @@ void menu_settings_for_rom(const char *rom_path)
 void menu_settings(void)
 {
    menu_settings_for_rom(NULL);
+}
+
+static void draw_pause_menu(dc_ui_list_t *list, const char *rom_path)
+{
+   static const char *items[] = {
+      "Resume",
+      "Save State",
+      "Load State",
+      "Settings",
+      "Quit to Menu",
+   };
+   dc_ui_layout_t layout;
+   char subtitle[80];
+   const char *basename;
+   int i;
+   int y;
+   int count = (int)(sizeof(items) / sizeof(items[0]));
+   int visible;
+   int row_w;
+
+   dc_ui_get_layout(&layout);
+   visible = dc_ui_list_visible_rows(list);
+   row_w   = (int)layout.width - layout.margin_x * 2 - 12;
+
+   basename = rom_path ? strrchr(rom_path, '/') : NULL;
+   basename = basename ? basename + 1 : "Game";
+
+   snprintf(subtitle, sizeof(subtitle), "%s", basename);
+
+   menu_frame_begin("Paused", subtitle,
+         "Start+Y/X quick save/load   L/R battery");
+
+   y = list->content_y;
+   for (i = list->scroll; i < count && i < list->scroll + visible; i++)
+   {
+      dc_ui_draw_menu_row(y, row_w, i == list->selected, items[i], NULL);
+      y += list->row_h;
+   }
+
+   dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
+         list->content_y, list->content_h, count, visible, list->scroll);
+}
+
+menu_pause_action_t menu_pause(const char *rom_path)
+{
+   dc_menu_input_t input;
+   dc_ui_layout_t layout;
+   dc_ui_list_t list;
+   menu_pause_action_t action = MENU_PAUSE_RESUME;
+   int count = 5;
+
+   dc_video_menu_begin();
+   dc_menu_input_reset(&input);
+   dc_ui_get_layout(&layout);
+   dc_ui_list_init(&list, &layout);
+
+   for (;;)
+   {
+      uint32_t pressed;
+
+      draw_pause_menu(&list, rom_path);
+      dc_ui_present(true);
+
+      if (!dc_menu_input_poll(&input, 0, &pressed))
+      {
+         thd_sleep(16);
+         continue;
+      }
+
+      if (pressed & CONT_DPAD_UP)
+         dc_ui_list_move(&list, -1, count);
+      else if (pressed & CONT_DPAD_DOWN)
+         dc_ui_list_move(&list, 1, count);
+      else if (pressed & CONT_A || pressed & CONT_START)
+      {
+         switch (list.selected)
+         {
+            case 0:
+               action = MENU_PAUSE_RESUME;
+               break;
+            case 1:
+               action = MENU_PAUSE_SAVE;
+               break;
+            case 2:
+               action = MENU_PAUSE_LOAD;
+               break;
+            case 3:
+               action = MENU_PAUSE_SETTINGS;
+               break;
+            default:
+               action = MENU_PAUSE_QUIT;
+               break;
+         }
+         break;
+      }
+      else if (pressed & CONT_B)
+      {
+         action = MENU_PAUSE_RESUME;
+         break;
+      }
+
+      thd_sleep(16);
+   }
+
+   dc_video_menu_end();
+   return action;
 }

@@ -22,4 +22,20 @@ uint32_t dc_input_maple_buttons(const dc_input_t *input);
 bool dc_input_ltrigger_pressed(const dc_input_t *input, uint8_t *prev_ltrig);
 bool dc_input_rtrigger_pressed(const dc_input_t *input, uint8_t *prev_rtrig);
 
+/* Raw Maple buttons for launcher / pause menus (no Start filtering). */
+typedef struct dc_menu_input
+{
+   uint32_t buttons;
+   uint32_t previous;
+   uint8_t ltrig;
+   uint8_t rtrig;
+   uint8_t prev_ltrig;
+   uint8_t prev_rtrig;
+} dc_menu_input_t;
+
+void dc_menu_input_reset(dc_menu_input_t *input);
+bool dc_menu_input_poll(dc_menu_input_t *input, unsigned port, uint32_t *pressed);
+bool dc_menu_input_ltrigger_edge(dc_menu_input_t *input);
+bool dc_menu_input_rtrigger_edge(dc_menu_input_t *input);
+
 #endif

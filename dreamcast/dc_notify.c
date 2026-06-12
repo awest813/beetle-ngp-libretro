@@ -1,12 +1,11 @@
 #include "dc_notify.h"
+#include "dc_ui.h"
 #include "dc_video.h"
 
 #include <kos.h>
 
 #include <stdio.h>
 #include <string.h>
-
-#define DC_NOTIFY_BAR_COLOR 0xA108u
 
 static char notify_text[80];
 static unsigned notify_frames;
@@ -35,45 +34,56 @@ bool dc_notify_active(void)
 void dc_notify_render_argb1555(uint16_t *buf, unsigned width, unsigned height,
       unsigned pitch)
 {
+   unsigned bar_h = 24;
    unsigned y;
-   unsigned bar_y0 = 4;
-   unsigned bar_y1 = height > 8 ? height - 4 : height;
    int x;
    int text_y;
 
    if (!dc_notify_active() || !buf || !width || !height || !pitch)
       return;
 
-   memset(buf, 0, (size_t)pitch * height * sizeof(uint16_t));
+   if (bar_h > height)
+      bar_h = height;
 
-   for (y = bar_y0; y < bar_y1; y++)
+   for (y = 0; y < bar_h; y++)
    {
       uint16_t *row = buf + y * pitch;
+      int xx;
 
-      for (x = 0; x < (int)width; x++)
-         row[x] = DC_NOTIFY_BAR_COLOR;
+      for (xx = 0; xx < (int)width; xx++)
+         row[xx] = DC_UI_COLOR_ACCENT;
    }
 
    x      = 8;
-   text_y = 8;
-   bfont_draw_str(buf + text_y * pitch + x, pitch, 1, notify_text);
+   text_y = 4;
+   bfont_draw_str(buf + text_y * pitch + x, pitch, DC_UI_COLOR_TEXT, notify_text);
 }
 
 void dc_notify_draw(void)
 {
-   unsigned pitch;
+   unsigned width;
+   unsigned bar_h = 24;
    int x;
    int y;
 
    if (!dc_notify_active())
       return;
 
-   pitch = dc_video_width();
-   x     = 16;
-   y     = (int)dc_video_height() - 32;
+   width = dc_video_width();
+   x     = 8;
+   y     = (int)dc_video_height() - (int)bar_h - 8;
 
    if (y < 0)
       y = 8;
 
-   bfont_draw_str(vram_s + y * pitch + x, pitch, 1, notify_text);
+   for (unsigned row = 0; row < bar_h; row++)
+   {
+      uint16_t *dst = vram_s + (y + (int)row) * width + x - 4;
+      int xx;
+
+      for (xx = 0; xx < (int)width - 16; xx++)
+         dst[xx] = DC_UI_COLOR_ACCENT;
+   }
+
+   bfont_draw_str(vram_s + y * width + x, width, DC_UI_COLOR_TEXT, notify_text);
 }

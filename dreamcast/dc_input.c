@@ -108,3 +108,68 @@ bool dc_input_rtrigger_pressed(const dc_input_t *input, uint8_t *prev_rtrig)
 
    return trigger_pressed(input->rtrig, prev_rtrig);
 }
+
+void dc_menu_input_reset(dc_menu_input_t *input)
+{
+   if (!input)
+      return;
+
+   input->buttons    = 0;
+   input->previous   = 0;
+   input->ltrig      = 0;
+   input->rtrig      = 0;
+   input->prev_ltrig = 0;
+   input->prev_rtrig = 0;
+}
+
+bool dc_menu_input_poll(dc_menu_input_t *input, unsigned port, uint32_t *pressed)
+{
+   maple_device_t *device;
+   cont_state_t *state;
+   uint32_t newly;
+
+   if (!input)
+      return false;
+
+   if (pressed)
+      *pressed = 0;
+
+   if (port != 0)
+      return false;
+
+   device = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+   if (!device)
+      return false;
+
+   state = (cont_state_t *)maple_dev_status(device);
+   if (!state)
+      return false;
+
+   input->buttons = state->buttons;
+   input->ltrig   = (uint8_t)state->ltrig;
+   input->rtrig   = (uint8_t)state->rtrig;
+
+   newly = input->buttons & ~input->previous;
+   input->previous = input->buttons;
+
+   if (pressed)
+      *pressed = newly;
+
+   return true;
+}
+
+bool dc_menu_input_ltrigger_edge(dc_menu_input_t *input)
+{
+   if (!input)
+      return false;
+
+   return trigger_pressed(input->ltrig, &input->prev_ltrig);
+}
+
+bool dc_menu_input_rtrigger_edge(dc_menu_input_t *input)
+{
+   if (!input)
+      return false;
+
+   return trigger_pressed(input->rtrig, &input->prev_rtrig);
+}
