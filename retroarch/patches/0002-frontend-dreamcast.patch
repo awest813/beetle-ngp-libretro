@@ -1,0 +1,41 @@
+--- a/frontend/frontend_driver.c
++++ b/frontend/frontend_driver.c
+@@ -77,6 +77,9 @@ static frontend_ctx_driver_t frontend_ctx_null = {
+ };
+ 
+ static frontend_ctx_driver_t *frontend_ctx_drivers[] = {
++#if defined(__DREAMCAST__)
++   &frontend_ctx_dreamcast,
++#endif
+ #if defined(EMSCRIPTEN)
+    &frontend_ctx_emscripten,
+ #endif
+@@ -194,6 +197,8 @@ size_t frontend_driver_get_core_extension(char *s, size_t len)
+    return strlcpy(s, "self|bin", len);
+ #elif defined(PS2)
+    return strlcpy(s, "elf", len);
++#elif defined(__DREAMCAST__)
++   return strlcpy(s, "elf", len);
+ #elif defined(_XBOX1)
+    return strlcpy(s, "xbe", len);
+ #elif defined(_XBOX360)
+@@ -239,6 +244,9 @@ bool frontend_driver_get_salamander_basename(char *s, size_t len)
+ #elif defined(PS2)
+    strlcpy(s, "raboot.elf", len);
+    return true;
++#elif defined(__DREAMCAST__)
++   strlcpy(s, "retroarch_dreamcast.elf", len);
++   return true;
+ #elif defined(__PSL1GHT__) || defined(__PS3__)
+    strlcpy(s, "EBOOT.BIN", len);
+    return true;
+--- a/frontend/frontend_driver.h
++++ b/frontend/frontend_driver.h
+@@ -227,6 +227,7 @@ extern frontend_ctx_driver_t frontend_ctx_wiiu;
+ extern frontend_ctx_driver_t frontend_ctx_qnx;
+ extern frontend_ctx_driver_t frontend_ctx_darwin;
+ extern frontend_ctx_driver_t frontend_ctx_unix;
++extern frontend_ctx_driver_t frontend_ctx_dreamcast;
+ extern frontend_ctx_driver_t frontend_ctx_psp;
+ extern frontend_ctx_driver_t frontend_ctx_ps2;
+ extern frontend_ctx_driver_t frontend_ctx_ctr;

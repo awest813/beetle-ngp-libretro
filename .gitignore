@@ -3,5 +3,6 @@
 *.so
 *.dll
 *.dylib
+*.elf
 /old
 

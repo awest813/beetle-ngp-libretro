@@ -814,3 +814,15 @@ void MDFN_MakeFName(uint8_t type, char *s, size_t len,
          break;
    }
 }
+
+bool dc_saves_sync_battery(void)
+{
+   flash_commit();
+   return true;
+}
+
+bool dc_saves_reload_battery(void)
+{
+   flash_read();
+   return true;
+}
