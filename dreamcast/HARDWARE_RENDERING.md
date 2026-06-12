@@ -31,7 +31,7 @@ retro_run()
             └─ [pvr]      pvr_txr_load_ex → pvr_list_begin → poly → pvr_finish
 ```
 
-Menus (`menu.c`), notifications (`dc_notify.c`), and VMU LCD (`dc_vmu.c`) can continue using `vram_s` / `vmufb` until PVR owns the full frame.
+Launcher menus use `dc_ui.c` (shared RGB555 buffer + `dc_pvr_present_ui` when PVR is active). Notifications use a PVR TR overlay during gameplay. VMU LCD stays on Maple `vmufb` (separate from the main PVR path).
 
 ## Implementation status
 
@@ -41,7 +41,7 @@ Menus (`menu.c`), notifications (`dc_notify.c`), and VMU LCD (`dc_vmu.c`) can co
 | 2 — Scaled hardware quad | **Done** (scale via polygon size) |
 | 3 — `dc_video` integration + setting | **Done** (`renderer=0\|1` in cfg, launcher) |
 | 4 — Optimizations | **Done** (DMA upload, double-buffer, frame dup) |
-| 5 — PVR UI | Partial (PVR toast overlay; menus still software) |
+| 5 — PVR UI | **Done** (launcher menus via `dc_ui` + `dc_pvr_present_ui`) |
 
 Launcher setting: **Renderer → Software / PVR**. Menus temporarily shut down PVR and use `vram_s` directly.
 
@@ -84,7 +84,7 @@ void dc_video_blitter_present(dc_video_blitter_t *b, bool vsync)
 ```
 
 - Update `retroarch/overlay/gfx/drivers/dc_gfx.c` to use the same entry point.
-- Menus: keep `vid_set_mode` + `vram_s` for now; optionally clear PVR before menu or force software while menu is open.
+- Menus: `dc_ui` renders to a CPU buffer and presents via PVR or `vram_s`; PVR stays initialized (no shutdown on menu open).
 
 **Exit criteria:** Launcher and RetroArch both run with `video_renderer=pvr` on hardware.
 
@@ -120,10 +120,16 @@ Launcher and RetroArch pass `NULL` to `video_refresh` / `dc_gfx_frame` on frame 
 | Interlaced TV modes | Test Phase 2 on `DM_640x480_NTSC_IL`; may need field flag |
 | RetroArch RGUI on PVR | RGUI may need software blit overlay until Phase 5 |
 
-## Phase 5 (optional) — Full PVR UI
+## Phase 5 — PVR UI (launcher)
 
-- Bitmap font via PVR textured quads for menus/notifications.
-- VMU preview could stay on Maple LCD API (separate from main PVR path).
+**Status:** Implemented in `dc_ui.c` / `dc_pvr_present_ui()`.
+
+- Menus draw with `bfont` into a linear RGB555 buffer (`dc_ui_begin_frame` / `dc_ui_draw_text`).
+- `dc_ui_present` uploads the full screen and draws a 1:1 PVR quad when `renderer=pvr`.
+- `dc_video_menu_begin/end` use a depth counter; PVR is no longer torn down for menus.
+- RetroArch RGUI still uses the software blitter overlay path until wired to `dc_ui`.
+
+VMU preview remains on Maple LCD (`vmufb`); load-from-VMU skips the 512-byte `/vmu/` file header when present.
 
 ## Suggested implementation order
 

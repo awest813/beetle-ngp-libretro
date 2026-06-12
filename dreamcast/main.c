@@ -11,6 +11,7 @@
 #include "dc_input.h"
 #include "dc_notify.h"
 #include "dc_saves.h"
+#include "dc_ui.h"
 #include "dc_vmu.h"
 #include "dc_settings.h"
 #include "dc_video.h"
@@ -307,6 +308,7 @@ int main(int argc, char **argv)
    hotkey_action_t action;
 
    dc_settings_load(dc_settings_get());
+   dc_ui_init();
    apply_video_settings();
    dc_saves_ensure_dir();
    dc_vmu_init();
@@ -346,6 +348,7 @@ int main(int argc, char **argv)
       printf("beetlengp: no ROM selected\n");
       retro_deinit();
       dc_vmu_shutdown();
+      dc_ui_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 0;
@@ -360,6 +363,7 @@ int main(int argc, char **argv)
       free(menu_path);
       retro_deinit();
       dc_vmu_shutdown();
+      dc_ui_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 1;
@@ -379,6 +383,7 @@ int main(int argc, char **argv)
       free(menu_path);
       retro_deinit();
       dc_vmu_shutdown();
+      dc_ui_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 1;
@@ -452,6 +457,7 @@ int main(int argc, char **argv)
    free(rom_data);
    free(menu_path);
    dc_vmu_shutdown();
+   dc_ui_shutdown();
    dc_video_blitter_destroy(blitter);
    dc_video_shutdown();
 

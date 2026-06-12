@@ -70,5 +70,6 @@ void dc_video_present_rgb555(const void *src, unsigned src_w, unsigned src_h,
 
 void dc_video_menu_begin(void);
 void dc_video_menu_end(void);
+bool dc_video_menu_active(void);
 
 #endif

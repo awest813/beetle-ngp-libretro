@@ -47,7 +47,7 @@ cd dreamcast
 make
 ```
 
-Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, vsync, auto-load state, audio on/off, save directory). Battery saves (`.flash`) and save states (`.state`) live in the save directory. Optional VMU LCD status and VMU flash mirroring are supported in the standalone launcher (see `dreamcast/HARDWARE_RENDERING.md` for the PVR hardware rendering plan).
+Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, **renderer** Software/PVR, vsync, auto-load state, audio on/off, save directory). Battery saves (`.flash`) and save states (`.state`) live in the save directory. Optional VMU LCD status and VMU flash mirroring are supported in the standalone launcher. With `renderer=1`, menus and gameplay use the PowerVR path (see `dreamcast/HARDWARE_RENDERING.md`).
 
 ## Layout
 

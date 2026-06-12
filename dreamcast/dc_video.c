@@ -2,6 +2,7 @@
 
 #include "dc_video.h"
 #include "dc_pvr.h"
+#include "dc_ui.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,7 @@ static dc_video_output_t active_output = DC_VIDEO_OUTPUT_AUTO;
 static dc_video_renderer_t active_renderer = DC_VIDEO_RENDERER_SOFTWARE;
 static unsigned active_scale = 3;
 static bool video_ready;
-static bool menu_using_software;
+static unsigned menu_depth;
 
 static int8_t effective_cable(dc_video_output_t pref, int8_t cable)
 {
@@ -94,7 +95,7 @@ void dc_video_set_renderer(dc_video_renderer_t renderer)
 
    active_renderer = renderer;
 
-   if (active_renderer == DC_VIDEO_RENDERER_PVR && video_ready && !menu_using_software)
+   if (active_renderer == DC_VIDEO_RENDERER_PVR && video_ready)
       dc_pvr_init();
 }
 
@@ -105,23 +106,19 @@ dc_video_renderer_t dc_video_get_renderer(void)
 
 void dc_video_menu_begin(void)
 {
-   if (active_renderer != DC_VIDEO_RENDERER_PVR)
-      return;
-
-   menu_using_software = true;
-   dc_pvr_shutdown();
+   menu_depth++;
+   dc_ui_resize();
 }
 
 void dc_video_menu_end(void)
 {
-   if (active_renderer != DC_VIDEO_RENDERER_PVR)
-   {
-      menu_using_software = false;
-      return;
-   }
+   if (menu_depth > 0)
+      menu_depth--;
+}
 
-   menu_using_software = false;
-   dc_pvr_init();
+bool dc_video_menu_active(void)
+{
+   return menu_depth > 0;
 }
 
 const char *dc_video_output_name(dc_video_output_t output)
@@ -152,8 +149,11 @@ bool dc_video_init_for_scale(dc_video_output_t output, unsigned scale)
    active_scale  = scale;
    video_ready   = true;
 
-   if (active_renderer == DC_VIDEO_RENDERER_PVR && !menu_using_software)
+   if (active_renderer == DC_VIDEO_RENDERER_PVR)
       dc_pvr_init();
+
+   if (menu_depth > 0)
+      dc_ui_resize();
 
    return true;
 }
@@ -404,7 +404,7 @@ void dc_video_blitter_rgb555(dc_video_blitter_t *blitter,
 void dc_video_present_rgb555(const void *src, unsigned src_w, unsigned src_h,
       size_t src_pitch, unsigned scale, bool vsync)
 {
-   if (active_renderer == DC_VIDEO_RENDERER_PVR && !menu_using_software)
+   if (active_renderer == DC_VIDEO_RENDERER_PVR && !menu_depth)
    {
       if (src)
       {

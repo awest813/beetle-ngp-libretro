@@ -35,7 +35,26 @@ static pvr_ptr_t notify_texture;
 static pvr_poly_hdr_t notify_hdr;
 static uint16_t *notify_staging;
 static bool notify_hdr_ready;
+
+static pvr_ptr_t ui_texture;
+static pvr_poly_hdr_t ui_hdr;
+static unsigned ui_tex_w;
+static unsigned ui_tex_h;
+static unsigned ui_tex_pow_w;
+static unsigned ui_tex_pow_h;
+static bool ui_hdr_ready;
+
 static bool pvr_ready;
+
+static unsigned pvr_pow2(unsigned value)
+{
+   unsigned power = 1;
+
+   while (power < value)
+      power <<= 1;
+
+   return power;
+}
 
 static unsigned pvr_clamp_scale(unsigned scale, unsigned src_w, unsigned src_h)
 {
@@ -86,13 +105,9 @@ static void pvr_upload_texture(const void *src, pvr_ptr_t dst, size_t bytes,
 
 static void pvr_draw_textured_quad(const pvr_poly_hdr_t *hdr,
       unsigned tex_w, unsigned tex_h, unsigned tex_pow_w, unsigned tex_pow_h,
-      unsigned scale, bool use_stride)
+      float ox, float oy, float draw_w, float draw_h, bool use_stride)
 {
    pvr_vertex_t vert;
-   unsigned draw_w = tex_w * scale;
-   unsigned draw_h = tex_h * scale;
-   float ox = (float)(dc_video_width() - draw_w) / 2.0f;
-   float oy = (float)(dc_video_height() - draw_h) / 2.0f;
    float umax = (float)tex_w / (float)tex_pow_w;
    float vmax = (float)tex_h / (float)tex_pow_h;
    int color = PVR_PACK_COLOR(1.0f, 1.0f, 1.0f, 1.0f);
@@ -112,24 +127,37 @@ static void pvr_draw_textured_quad(const pvr_poly_hdr_t *hdr,
    vert.oargb = 0;
    pvr_prim(&vert, sizeof(vert));
 
-   vert.x = ox + (float)draw_w;
+   vert.x = ox + draw_w;
    vert.y = oy;
    vert.u = umax;
    vert.v = 0.0f;
    pvr_prim(&vert, sizeof(vert));
 
    vert.x = ox;
-   vert.y = oy + (float)draw_h;
+   vert.y = oy + draw_h;
    vert.u = 0.0f;
    vert.v = vmax;
    pvr_prim(&vert, sizeof(vert));
 
    vert.flags = PVR_CMD_VERTEX_EOL;
-   vert.x = ox + (float)draw_w;
-   vert.y = oy + (float)draw_h;
+   vert.x = ox + draw_w;
+   vert.y = oy + draw_h;
    vert.u = umax;
    vert.v = vmax;
    pvr_prim(&vert, sizeof(vert));
+}
+
+static void pvr_draw_scaled_quad(const pvr_poly_hdr_t *hdr,
+      unsigned tex_w, unsigned tex_h, unsigned tex_pow_w, unsigned tex_pow_h,
+      unsigned scale, bool use_stride)
+{
+   unsigned draw_w = tex_w * scale;
+   unsigned draw_h = tex_h * scale;
+   float ox = (float)(dc_video_width() - draw_w) / 2.0f;
+   float oy = (float)(dc_video_height() - draw_h) / 2.0f;
+
+   pvr_draw_textured_quad(hdr, tex_w, tex_h, tex_pow_w, tex_pow_h,
+         ox, oy, (float)draw_w, (float)draw_h, use_stride);
 }
 
 static void pvr_draw_notify_quad(void)
@@ -217,6 +245,21 @@ static void pvr_compile_hdr(unsigned idx)
    pvr_poly_compile(&pvr_hdr[idx], &cxt);
 }
 
+static void pvr_free_ui_texture(void)
+{
+   if (ui_texture)
+   {
+      pvr_mem_free(ui_texture);
+      ui_texture = NULL;
+   }
+
+   ui_tex_w = 0;
+   ui_tex_h = 0;
+   ui_tex_pow_w = 0;
+   ui_tex_pow_h = 0;
+   ui_hdr_ready = false;
+}
+
 static void pvr_free_buffers(void)
 {
    unsigned i;
@@ -242,9 +285,46 @@ static void pvr_free_buffers(void)
       notify_texture = NULL;
    }
 
+   pvr_free_ui_texture();
+
    notify_hdr_ready = false;
    pvr_front_idx = 0;
    pvr_has_frame = false;
+}
+
+static void pvr_prepare_ui_hdr(unsigned width, unsigned height)
+{
+   pvr_poly_cxt_t cxt;
+
+   if (ui_hdr_ready && ui_tex_w == width && ui_tex_h == height)
+      return;
+
+   pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, DC_PVR_TEX_FMT,
+         ui_tex_pow_w, ui_tex_pow_h, ui_texture, PVR_FILTER_NONE);
+   pvr_poly_compile(&ui_hdr, &cxt);
+   ui_hdr_ready = true;
+}
+
+static bool pvr_ensure_ui_texture(unsigned width, unsigned height)
+{
+   size_t bytes;
+
+   if (!width || !height)
+      return false;
+
+   if (ui_texture && ui_tex_w == width && ui_tex_h == height)
+      return true;
+
+   pvr_free_ui_texture();
+
+   ui_tex_w     = width;
+   ui_tex_h     = height;
+   ui_tex_pow_w = pvr_pow2(width);
+   ui_tex_pow_h = pvr_pow2(height);
+   bytes        = (size_t)width * height * sizeof(uint16_t);
+   ui_texture   = pvr_mem_malloc(bytes);
+
+   return ui_texture != NULL;
 }
 
 bool dc_pvr_init(void)
@@ -339,11 +419,37 @@ void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
 
    pvr_scene_begin();
    pvr_list_begin(PVR_LIST_OP_POLY);
-   pvr_draw_textured_quad(&pvr_hdr[pvr_front_idx], DC_PVR_TEX_W, DC_PVR_TEX_H,
+   pvr_draw_scaled_quad(&pvr_hdr[pvr_front_idx], DC_PVR_TEX_W, DC_PVR_TEX_H,
          DC_PVR_TEX_POW_W, DC_PVR_TEX_POW_H, scale, true);
    pvr_list_finish();
 
    pvr_draw_notify();
+   pvr_scene_finish();
+
+   if (vsync)
+      vid_waitvbl();
+}
+
+void dc_pvr_present_ui(const uint16_t *src, unsigned width, unsigned height,
+      bool vsync)
+{
+   size_t bytes;
+
+   if (!pvr_ready || !src || !width || !height)
+      return;
+
+   if (!pvr_ensure_ui_texture(width, height))
+      return;
+
+   bytes = (size_t)width * height * sizeof(uint16_t);
+   pvr_upload_texture(src, ui_texture, bytes, width);
+   pvr_prepare_ui_hdr(width, height);
+
+   pvr_scene_begin();
+   pvr_list_begin(PVR_LIST_OP_POLY);
+   pvr_draw_textured_quad(&ui_hdr, width, height, ui_tex_pow_w, ui_tex_pow_h,
+         0.0f, 0.0f, (float)width, (float)height, true);
+   pvr_list_finish();
    pvr_scene_finish();
 
    if (vsync)

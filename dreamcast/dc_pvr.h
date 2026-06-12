@@ -14,4 +14,7 @@ bool dc_pvr_is_ready(void);
 void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
       size_t src_pitch, unsigned scale, bool vsync);
 
+void dc_pvr_present_ui(const uint16_t *src, unsigned width, unsigned height,
+      bool vsync);
+
 #endif

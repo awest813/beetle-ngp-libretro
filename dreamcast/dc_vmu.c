@@ -18,6 +18,7 @@
 #define DC_VMU_MAX_DEVICES 8
 #define DC_VMU_FLASH_EXT    "FLA"
 #define DC_VMU_PRESENT_RATE 60
+#define DC_VMU_FILE_HDR     512
 
 typedef struct dc_vmu_slot
 {
@@ -125,7 +126,7 @@ static void vmu_build_preview(const uint16_t *frame, unsigned width, unsigned he
          size_t bit = (size_t)y * VMU_SCREEN_WIDTH + x;
 
          if (lum >= 24)
-            vmu.preview[bit / 8] |= (uint8_t)(1u << (bit % 8));
+            vmu.preview[bit / 8] |= (uint8_t)(1u << (7 - (bit % 8)));
       }
    }
 
@@ -172,6 +173,21 @@ static size_t vmu_pad_size(size_t size)
    size_t blocks = (size + 511) / 512;
 
    return blocks * 512;
+}
+
+static size_t vmu_payload_offset(size_t file_size)
+{
+   size_t payload;
+
+   if (file_size <= DC_VMU_FILE_HDR)
+      return 0;
+
+   payload = file_size - DC_VMU_FILE_HDR;
+
+   if ((payload % 512) == 0)
+      return DC_VMU_FILE_HDR;
+
+   return 0;
 }
 
 bool dc_vmu_init(void)
@@ -378,18 +394,23 @@ bool dc_vmu_load_flash_from_vmu(const char *rom_path)
 
       fclose(in);
 
-      dc_saves_ensure_dir();
-      out = fopen(flash_path, "wb");
-      if (!out)
       {
-         free(data);
-         return false;
-      }
+         size_t offset = vmu_payload_offset((size_t)size);
+         size_t payload = (size_t)size - offset;
 
-      fwrite(data, 1, (size_t)size, out);
-      fclose(out);
-      free(data);
-      return true;
+         dc_saves_ensure_dir();
+         out = fopen(flash_path, "wb");
+         if (!out)
+         {
+            free(data);
+            return false;
+         }
+
+         fwrite(data + offset, 1, payload, out);
+         fclose(out);
+         free(data);
+         return true;
+      }
    }
 
    return false;

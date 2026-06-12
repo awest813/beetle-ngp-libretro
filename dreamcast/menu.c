@@ -1,6 +1,7 @@
 #include "menu.h"
 
 #include "dc_settings.h"
+#include "dc_ui.h"
 #include "dc_video.h"
 #include "dc_vmu.h"
 
@@ -16,11 +17,6 @@
 
 #define MAX_ROM_ENTRIES 64
 #define ROM_NAME_LEN    48
-static unsigned screen_pitch(void)
-{
-   return dc_video_width();
-}
-
 typedef struct
 {
    char path[256];
@@ -52,14 +48,12 @@ static cont_state_t *poll_controller(void)
 
 static void clear_screen(void)
 {
-   dc_video_clear_screen();
+   dc_ui_begin_frame();
 }
 
 static void draw_text(int x, int y, int color, const char *text)
 {
-   unsigned pitch = screen_pitch();
-
-   bfont_draw_str(vram_s + y * pitch + x, pitch, color, text);
+   dc_ui_draw_text(x, y, color, text);
 }
 
 static bool has_rom_extension(const char *name)
@@ -170,6 +164,7 @@ char *menu_pick_rom(void)
       uint32_t pressed;
 
       draw_rom_menu(selected);
+      dc_ui_present(true);
 
       state = poll_controller();
       if (!state)
@@ -202,7 +197,6 @@ char *menu_pick_rom(void)
       thd_sleep(16);
    }
 
-   dc_video_menu_end();
    return result;
 }
 
@@ -250,6 +244,7 @@ menu_action_t menu_main(char **rom_path_out)
       uint32_t pressed;
 
       draw_main_menu(selected);
+      dc_ui_present(true);
 
       state = poll_controller();
       if (!state)
@@ -402,6 +397,7 @@ void menu_settings(void)
       uint32_t pressed;
 
       draw_settings_menu(selected, settings);
+      dc_ui_present(true);
 
       state = poll_controller();
       if (!state)
