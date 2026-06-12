@@ -120,6 +120,7 @@ void dc_menu_input_reset(dc_menu_input_t *input)
    input->rtrig      = 0;
    input->prev_ltrig = 0;
    input->prev_rtrig = 0;
+   input->hold_ticks = 0;
 }
 
 bool dc_menu_input_poll(dc_menu_input_t *input, unsigned port, uint32_t *pressed)
@@ -156,6 +157,40 @@ bool dc_menu_input_poll(dc_menu_input_t *input, unsigned port, uint32_t *pressed
       *pressed = newly;
 
    return true;
+}
+
+int dc_menu_input_list_delta(dc_menu_input_t *input, uint32_t pressed)
+{
+   uint32_t held;
+
+   if (!input)
+      return 0;
+
+   if (pressed & CONT_DPAD_UP)
+   {
+      input->hold_ticks = 0;
+      return -1;
+   }
+   if (pressed & CONT_DPAD_DOWN)
+   {
+      input->hold_ticks = 0;
+      return 1;
+   }
+
+   held = input->buttons & (CONT_DPAD_UP | CONT_DPAD_DOWN);
+   if (!held)
+   {
+      input->hold_ticks = 0;
+      return 0;
+   }
+
+   input->hold_ticks++;
+   if (input->hold_ticks < DC_MENU_REPEAT_DELAY)
+      return 0;
+   if ((input->hold_ticks - DC_MENU_REPEAT_DELAY) % DC_MENU_REPEAT_RATE != 0)
+      return 0;
+
+   return (held & CONT_DPAD_UP) ? -1 : 1;
 }
 
 bool dc_menu_input_ltrigger_edge(dc_menu_input_t *input)

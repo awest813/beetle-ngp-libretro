@@ -31,10 +31,15 @@ typedef struct dc_menu_input
    uint8_t rtrig;
    uint8_t prev_ltrig;
    uint8_t prev_rtrig;
+   unsigned hold_ticks;
 } dc_menu_input_t;
+
+#define DC_MENU_REPEAT_DELAY  18
+#define DC_MENU_REPEAT_RATE   5
 
 void dc_menu_input_reset(dc_menu_input_t *input);
 bool dc_menu_input_poll(dc_menu_input_t *input, unsigned port, uint32_t *pressed);
+int dc_menu_input_list_delta(dc_menu_input_t *input, uint32_t pressed);
 bool dc_menu_input_ltrigger_edge(dc_menu_input_t *input);
 bool dc_menu_input_rtrigger_edge(dc_menu_input_t *input);
 

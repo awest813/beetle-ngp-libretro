@@ -366,6 +366,7 @@ int main(int argc, char **argv)
    dc_saves_ensure_dir();
    dc_vmu_init();
    apply_vmu_settings();
+   menu_splash();
 
    blitter = dc_video_blitter_create(video_scale);
    if (!blitter)
@@ -408,6 +409,7 @@ int main(int argc, char **argv)
    }
 
    loaded_rom_path = rom_path;
+   menu_loading_screen(rom_path);
 
    rom_data = load_rom_file(rom_path, &rom_size);
    if (!rom_data)
@@ -441,6 +443,8 @@ int main(int argc, char **argv)
       dc_video_shutdown();
       return 1;
    }
+
+   dc_settings_set_last_rom(dc_settings_get(), rom_path);
 
    retro_get_system_av_info(&av_info);
    printf("beetlengp: running %s at %.2f fps / %.0f Hz\n",

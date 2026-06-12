@@ -55,6 +55,8 @@ void dc_ui_draw_panel(int x, int y, int w, int h);
 void dc_ui_draw_separator(int y);
 void dc_ui_draw_menu_row(int y, int w, bool selected, const char *label,
       const char *value);
+void dc_ui_draw_hint(int y, const char *text);
+void dc_ui_draw_badge(int x, int y, const char *text, bool active);
 void dc_ui_draw_scrollbar(int x, int y, int h, int total, int visible,
       int scroll);
 

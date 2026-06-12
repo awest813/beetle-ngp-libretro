@@ -137,9 +137,11 @@ Launcher and RetroArch pass `NULL` to `video_refresh` / `dc_gfx_frame` on frame 
 
 | Context | Input |
 |---------|--------|
-| Launcher | D-Pad move, A select, B/Start cancel |
-| In-game pause | Start (alone) opens menu; Start+Y/X/L/R quick save/load/battery |
-| Settings | Left/Right change values, A toggles booleans, B saves and exits |
+| Boot | Splash screen; press any button to skip |
+| Launcher | Continue last game (if available), D-Pad move (hold to repeat), A select |
+| ROM browser | Sorted A–Z, remembers last game, S/B badges for state/battery |
+| In-game pause | Start opens menu; confirm load/quit; Start+Y/X/L/R quick shortcuts |
+| Settings | Per-item hints, Left/Right change values, save acknowledgment flash |
 
 VMU preview remains on Maple LCD (`vmufb`). VMU flash mirroring uses `vmu_pkg_build` /
 `vmu_pkg_parse` for BIOS-visible `.FLA` files, with periodic Maple rescan and a

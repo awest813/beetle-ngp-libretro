@@ -224,6 +224,36 @@ void dc_ui_draw_menu_row(int y, int w, bool selected, const char *label,
    }
 }
 
+void dc_ui_draw_hint(int y, const char *text)
+{
+   dc_ui_layout_t layout;
+
+   if (!text || !text[0])
+      return;
+
+   dc_ui_get_layout(&layout);
+   dc_ui_draw_panel(layout.margin_x, y,
+         (int)layout.width - layout.margin_x * 2, layout.row_h + 6);
+   dc_ui_draw_text(layout.margin_x + 8, y + 4, DC_UI_COLOR_TEXT_DIM, text);
+}
+
+void dc_ui_draw_badge(int x, int y, const char *text, bool active)
+{
+   int w;
+   uint16_t bg;
+   int color;
+
+   if (!text || !text[0])
+      return;
+
+   w = (int)strlen(text) * 8 + 8;
+   bg    = active ? DC_UI_COLOR_ACCENT : DC_UI_COLOR_PANEL;
+   color = active ? DC_UI_COLOR_TEXT : DC_UI_COLOR_TEXT_DIM;
+
+   dc_ui_fill_rect(x, y, w, 14, bg);
+   dc_ui_draw_text(x + 4, y + 2, color, text);
+}
+
 void dc_ui_draw_scrollbar(int x, int y, int h, int total, int visible,
       int scroll)
 {

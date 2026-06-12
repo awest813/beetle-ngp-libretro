@@ -31,6 +31,7 @@ void dc_settings_set_defaults(dc_settings_t *settings)
    strncpy(settings->system_dir, "/sd", sizeof(settings->system_dir) - 1);
    settings->save_dir[sizeof(settings->save_dir) - 1]   = '\0';
    settings->system_dir[sizeof(settings->system_dir) - 1] = '\0';
+   settings->last_rom[0] = '\0';
 }
 
 void dc_settings_load(dc_settings_t *settings)
@@ -89,12 +90,15 @@ void dc_settings_load(dc_settings_t *settings)
          strncpy(settings->save_dir, value, sizeof(settings->save_dir) - 1);
       else if (!strcmp(key, "system_dir"))
          strncpy(settings->system_dir, value, sizeof(settings->system_dir) - 1);
+      else if (!strcmp(key, "last_rom"))
+         strncpy(settings->last_rom, value, sizeof(settings->last_rom) - 1);
    }
 
    fclose(file);
 
    settings->save_dir[sizeof(settings->save_dir) - 1]     = '\0';
    settings->system_dir[sizeof(settings->system_dir) - 1] = '\0';
+   settings->last_rom[sizeof(settings->last_rom) - 1]     = '\0';
 }
 
 void dc_settings_save(const dc_settings_t *settings)
@@ -121,10 +125,36 @@ void dc_settings_save(const dc_settings_t *settings)
    fprintf(file, "vmu_save=%u\n", settings->vmu_save_sync ? 1 : 0);
    fprintf(file, "save_dir=%s\n", settings->save_dir);
    fprintf(file, "system_dir=%s\n", settings->system_dir);
+   fprintf(file, "last_rom=%s\n", settings->last_rom);
    fclose(file);
 }
 
 dc_settings_t *dc_settings_get(void)
 {
    return &active_settings;
+}
+
+bool dc_settings_last_rom_valid(const dc_settings_t *settings)
+{
+   FILE *file;
+
+   if (!settings || !settings->last_rom[0])
+      return false;
+
+   file = fopen(settings->last_rom, "rb");
+   if (!file)
+      return false;
+
+   fclose(file);
+   return true;
+}
+
+void dc_settings_set_last_rom(dc_settings_t *settings, const char *path)
+{
+   if (!settings || !path || !path[0])
+      return;
+
+   strncpy(settings->last_rom, path, sizeof(settings->last_rom) - 1);
+   settings->last_rom[sizeof(settings->last_rom) - 1] = '\0';
+   dc_settings_save(settings);
 }

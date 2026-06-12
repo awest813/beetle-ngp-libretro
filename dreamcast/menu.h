@@ -19,7 +19,13 @@ typedef enum menu_pause_action
    MENU_PAUSE_QUIT
 } menu_pause_action_t;
 
-/* Main launcher: Load Game, Settings, or Exit. */
+/* Brief boot splash (skippable). Call after dc_ui_init / video init. */
+void menu_splash(void);
+
+/* One-frame loading indicator before core loads a ROM. */
+void menu_loading_screen(const char *rom_path);
+
+/* Main launcher: Continue (if available), Load Game, Settings, or Exit. */
 menu_action_t menu_main(char **rom_path_out);
 
 /* ROM browser (used from main menu). */

@@ -25,6 +25,7 @@ typedef struct dc_settings
    bool vmu_save_sync;
    char save_dir[64];
    char system_dir[64];
+   char last_rom[256];
 } dc_settings_t;
 
 void dc_settings_load(dc_settings_t *settings);
@@ -32,5 +33,9 @@ void dc_settings_save(const dc_settings_t *settings);
 void dc_settings_set_defaults(dc_settings_t *settings);
 
 dc_settings_t *dc_settings_get(void);
+
+bool dc_settings_last_rom_valid(const dc_settings_t *settings);
+void dc_settings_set_last_rom(dc_settings_t *settings, const char *path);
+
 
 #endif
