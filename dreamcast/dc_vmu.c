@@ -8,21 +8,22 @@
 #include <dc/maple/vmu.h>
 #include <dc/vmu_fb.h>
 #include <dc/vmu_pkg.h>
-#include <dc/fs_vmu.h>
 
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define DC_VMU_MAX_DEVICES 8
-#define DC_VMU_FLASH_EXT    "FLA"
-#define DC_VMU_PRESENT_RATE 60
-#define DC_VMU_FILE_HDR     512
+#define DC_VMU_MAX_DEVICES    8
+#define DC_VMU_FLASH_EXT      "FLA"
+#define DC_VMU_PRESENT_RATE     60
+#define DC_VMU_RESCAN_RATE      300
+#define DC_VMU_APP_ID           "BEETLE_NGP"
 
 typedef struct dc_vmu_slot
 {
    maple_device_t *dev;
+   char path_prefix[8];
 } dc_vmu_slot_t;
 
 static struct
@@ -35,9 +36,12 @@ static struct
    char game_name[20];
    bool battery_save;
    unsigned frame_counter;
+   unsigned rescan_counter;
    bool preview_valid;
    uint8_t preview[VMU_SCREEN_WIDTH * VMU_SCREEN_HEIGHT / 8];
 } vmu;
+
+static uint8_t vmu_icon_bitmap[512];
 
 static void vmu_make_filename(const char *basename, char *out, size_t out_len)
 {
@@ -55,10 +59,40 @@ static void vmu_make_filename(const char *basename, char *out, size_t out_len)
 static void vmu_make_path(const dc_vmu_slot_t *slot, const char *filename,
       char *out, size_t out_len)
 {
-   maple_device_t *dev = slot->dev;
+   snprintf(out, out_len, "%s/%s", slot->path_prefix, filename);
+}
 
-   snprintf(out, out_len, "/vmu/%c%d/%s",
-         'a' + (int)dev->port, (int)dev->unit + 1, filename);
+static void vmu_init_default_icon(void)
+{
+   unsigned y;
+   static bool icon_ready;
+
+   if (icon_ready)
+      return;
+
+   memset(vmu_icon_bitmap, 0, sizeof(vmu_icon_bitmap));
+
+   for (y = 0; y < 32; y++)
+   {
+      unsigned x;
+      uint8_t *row = vmu_icon_bitmap + y * 16;
+
+      for (x = 0; x < 32; x++)
+      {
+         bool on = (x >= 6 && x < 26 && y >= 8 && y < 24)
+               && (((x + y) & 3) == 0);
+
+         if (on)
+         {
+            unsigned byte = x >> 1;
+            unsigned nibble = (x & 1) ? 0 : 4;
+
+            row[byte] |= (uint8_t)(1u << nibble);
+         }
+      }
+   }
+
+   icon_ready = true;
 }
 
 static void vmu_scan_devices(void)
@@ -74,7 +108,11 @@ static void vmu_scan_devices(void)
       if (!dev)
          break;
 
-      vmu.slots[vmu.slot_count++].dev = dev;
+      vmu.slots[vmu.slot_count].dev = dev;
+      snprintf(vmu.slots[vmu.slot_count].path_prefix,
+            sizeof(vmu.slots[vmu.slot_count].path_prefix),
+            "/vmu/%c%d", 'a' + (int)dev->port, (int)dev->unit + 1);
+      vmu.slot_count++;
    }
 }
 
@@ -125,7 +163,7 @@ static void vmu_build_preview(const uint16_t *frame, unsigned width, unsigned he
          unsigned lum = ((px >> 10) & 0x1f) + ((px >> 5) & 0x1f) + (px & 0x1f);
          size_t bit = (size_t)y * VMU_SCREEN_WIDTH + x;
 
-         if (lum >= 24)
+         if (lum >= 20)
             vmu.preview[bit / 8] |= (uint8_t)(1u << (7 - (bit % 8)));
       }
    }
@@ -157,43 +195,48 @@ static void vmu_draw_game_screen(void)
       vmufb_print_string_into(&vmu.fb, font, 34, 24, 14, 8, 0, line2);
 }
 
-static void vmu_setup_default_pkg(vmu_pkg_t *pkg, const char *basename)
+static void vmu_setup_default_pkg(vmu_pkg_t *pkg, const char *basename,
+      const uint8_t *payload, int payload_len)
 {
+   vmu_init_default_icon();
    memset(pkg, 0, sizeof(*pkg));
+
    snprintf(pkg->desc_short, sizeof(pkg->desc_short), "%.16s", basename);
    snprintf(pkg->desc_long, sizeof(pkg->desc_long), "Beetle NGP Flash");
-   pkg->app_id        = 'NGP';
-   pkg->icon_cnt      = 1;
-   pkg->icon_anim_speed = 0;
-   pkg->eyecatch_type = VMUPKG_EC_NONE;
+   strncpy(pkg->app_id, DC_VMU_APP_ID, sizeof(pkg->app_id) - 1);
+   pkg->icon_cnt         = 1;
+   pkg->icon_anim_speed  = 0;
+   pkg->eyecatch_type    = VMUPKG_EC_NONE;
+   pkg->data_len         = payload_len;
+   pkg->data             = payload;
+   pkg->icon_data        = vmu_icon_bitmap;
+   pkg->icon_pal[0]      = 0x0000;
+   pkg->icon_pal[1]      = 0x0fff;
+   pkg->icon_pal[2]      = 0x0000;
 }
 
-static size_t vmu_pad_size(size_t size)
+static void vmu_pkg_free_parsed(vmu_pkg_t *pkg)
 {
-   size_t blocks = (size + 511) / 512;
+   if (!pkg)
+      return;
 
-   return blocks * 512;
-}
+   if (pkg->icon_data)
+   {
+      free(pkg->icon_data);
+      pkg->icon_data = NULL;
+   }
 
-static size_t vmu_payload_offset(size_t file_size)
-{
-   size_t payload;
-
-   if (file_size <= DC_VMU_FILE_HDR)
-      return 0;
-
-   payload = file_size - DC_VMU_FILE_HDR;
-
-   if ((payload % 512) == 0)
-      return DC_VMU_FILE_HDR;
-
-   return 0;
+   if (pkg->eyecatch_data)
+   {
+      free(pkg->eyecatch_data);
+      pkg->eyecatch_data = NULL;
+   }
 }
 
 bool dc_vmu_init(void)
 {
    memset(&vmu, 0, sizeof(vmu));
-   vmu.lcd_enabled      = true;
+   vmu.lcd_enabled       = true;
    vmu.save_sync_enabled = false;
    vmu_scan_devices();
    vmu_draw_status("Beetle NGP", vmu.slot_count ? "Ready" : "No VMU");
@@ -208,6 +251,26 @@ void dc_vmu_shutdown(void)
    memset(&vmu, 0, sizeof(vmu));
 }
 
+void dc_vmu_rescan(void)
+{
+   unsigned prev = vmu.slot_count;
+
+   vmu_scan_devices();
+
+   if (vmu.lcd_enabled && vmu.slot_count != prev)
+   {
+      char line2[20];
+
+      if (vmu.slot_count == 0)
+         strncpy(line2, "No VMU", sizeof(line2));
+      else
+         snprintf(line2, sizeof(line2), "%u VMU", vmu.slot_count);
+
+      vmu_draw_status("Beetle NGP", line2);
+      vmu_present_all();
+   }
+}
+
 void dc_vmu_set_enabled(bool lcd, bool save_sync)
 {
    vmu.lcd_enabled       = lcd;
@@ -218,12 +281,15 @@ void dc_vmu_set_game(const char *rom_path, bool battery_save)
 {
    char basename[128];
 
+   if (!rom_path)
+      return;
+
    dc_saves_basename(rom_path, basename, sizeof(basename));
    strncpy(vmu.game_name, basename, sizeof(vmu.game_name) - 1);
    vmu.game_name[sizeof(vmu.game_name) - 1] = '\0';
-   vmu.battery_save = battery_save;
-   vmu.frame_counter = 0;
-   vmu.preview_valid = false;
+   vmu.battery_save    = battery_save;
+   vmu.frame_counter   = 0;
+   vmu.preview_valid   = false;
 }
 
 void dc_vmu_present_idle(const char *message)
@@ -250,6 +316,11 @@ void dc_vmu_on_frame(void)
       return;
 
    vmu.frame_counter++;
+   vmu.rescan_counter++;
+
+   if ((vmu.rescan_counter % DC_VMU_RESCAN_RATE) == 0)
+      dc_vmu_rescan();
+
    if ((vmu.frame_counter % DC_VMU_PRESENT_RATE) != 0)
       return;
 
@@ -267,15 +338,27 @@ unsigned dc_vmu_device_count(void)
    return vmu.slot_count;
 }
 
+bool dc_vmu_get_slot_path(unsigned index, char *out, size_t out_len)
+{
+   if (!out || !out_len || index >= vmu.slot_count)
+      return false;
+
+   strncpy(out, vmu.slots[index].path_prefix, out_len - 1);
+   out[out_len - 1] = '\0';
+   return true;
+}
+
 bool dc_vmu_sync_flash_to_vmu(const char *rom_path)
 {
    char flash_path[256];
    char filename[16];
    char basename[128];
    FILE *in;
-   uint8_t *padded;
-   size_t size, padded_size;
+   uint8_t *flash_data;
+   size_t size;
    vmu_pkg_t pkg;
+   uint8_t *pkg_out;
+   int pkg_size;
    unsigned i;
    bool any = false;
 
@@ -297,17 +380,16 @@ bool dc_vmu_sync_flash_to_vmu(const char *rom_path)
       return false;
    }
 
-   padded_size = vmu_pad_size(size);
-   padded = (uint8_t *)calloc(1, padded_size);
-   if (!padded)
+   flash_data = (uint8_t *)malloc(size);
+   if (!flash_data)
    {
       fclose(in);
       return false;
    }
 
-   if (fread(padded, 1, size, in) != size)
+   if (fread(flash_data, 1, size, in) != size)
    {
-      free(padded);
+      free(flash_data);
       fclose(in);
       return false;
    }
@@ -316,8 +398,13 @@ bool dc_vmu_sync_flash_to_vmu(const char *rom_path)
 
    dc_saves_basename(rom_path, basename, sizeof(basename));
    vmu_make_filename(basename, filename, sizeof(filename));
-   vmu_setup_default_pkg(&pkg, basename);
-   fs_vmu_set_default_header(&pkg);
+   vmu_setup_default_pkg(&pkg, basename, flash_data, (int)size);
+
+   if (vmu_pkg_build(&pkg, &pkg_out, &pkg_size) < 0 || !pkg_out || pkg_size <= 0)
+   {
+      free(flash_data);
+      return false;
+   }
 
    for (i = 0; i < vmu.slot_count; i++)
    {
@@ -325,17 +412,20 @@ bool dc_vmu_sync_flash_to_vmu(const char *rom_path)
       FILE *out;
 
       vmu_make_path(&vmu.slots[i], filename, path, sizeof(path));
+      remove(path);
+
       out = fopen(path, "wb");
       if (!out)
          continue;
 
-      if (fwrite(padded, 1, padded_size, out) == padded_size)
+      if (fwrite(pkg_out, 1, (size_t)pkg_size, out) == (size_t)pkg_size)
          any = true;
 
       fclose(out);
    }
 
-   free(padded);
+   free(pkg_out);
+   free(flash_data);
    return any;
 }
 
@@ -348,6 +438,7 @@ bool dc_vmu_load_flash_from_vmu(const char *rom_path)
    uint8_t *data;
    long size;
    unsigned i;
+   char basename[128];
 
    if (!vmu.save_sync_enabled || !rom_path || vmu.slot_count == 0)
       return false;
@@ -355,14 +446,14 @@ bool dc_vmu_load_flash_from_vmu(const char *rom_path)
    if (dc_saves_flash_exists(rom_path))
       return false;
 
-   char basename[128];
-
    dc_saves_flash_path(rom_path, flash_path, sizeof(flash_path));
    dc_saves_basename(rom_path, basename, sizeof(basename));
    vmu_make_filename(basename, filename, sizeof(filename));
 
    for (i = 0; i < vmu.slot_count; i++)
    {
+      vmu_pkg_t pkg;
+
       vmu_make_path(&vmu.slots[i], filename, path, sizeof(path));
       in = fopen(path, "rb");
       if (!in)
@@ -394,10 +485,29 @@ bool dc_vmu_load_flash_from_vmu(const char *rom_path)
 
       fclose(in);
 
+      memset(&pkg, 0, sizeof(pkg));
+      if (vmu_pkg_parse(data, (size_t)size, &pkg) == 0 && pkg.data && pkg.data_len > 0)
       {
-         size_t offset = vmu_payload_offset((size_t)size);
-         size_t payload = (size_t)size - offset;
+         dc_saves_ensure_dir();
+         out = fopen(flash_path, "wb");
+         if (!out)
+         {
+            vmu_pkg_free_parsed(&pkg);
+            free(data);
+            return false;
+         }
 
+         fwrite(pkg.data, 1, (size_t)pkg.data_len, out);
+         fclose(out);
+         vmu_pkg_free_parsed(&pkg);
+         free(data);
+         return true;
+      }
+
+      vmu_pkg_free_parsed(&pkg);
+
+      if ((size_t)size > 512 && ((size_t)size % 512) == 0)
+      {
          dc_saves_ensure_dir();
          out = fopen(flash_path, "wb");
          if (!out)
@@ -406,11 +516,13 @@ bool dc_vmu_load_flash_from_vmu(const char *rom_path)
             return false;
          }
 
-         fwrite(data + offset, 1, payload, out);
+         fwrite(data + 512, 1, (size_t)size - 512, out);
          fclose(out);
          free(data);
          return true;
       }
+
+      free(data);
    }
 
    return false;

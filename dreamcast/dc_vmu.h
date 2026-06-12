@@ -20,5 +20,7 @@ bool dc_vmu_sync_flash_to_vmu(const char *rom_path);
 bool dc_vmu_load_flash_from_vmu(const char *rom_path);
 
 unsigned dc_vmu_device_count(void);
+void dc_vmu_rescan(void);
+bool dc_vmu_get_slot_path(unsigned index, char *out, size_t out_len);
 
 #endif

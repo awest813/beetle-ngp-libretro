@@ -56,6 +56,8 @@ static bool menu_visible;
 static bool menu_has_frame;
 
 static bool pvr_ready;
+static bool pvr_dma_inflight;
+static unsigned pvr_dma_idx;
 
 static unsigned pvr_pow2(unsigned value)
 {
@@ -105,8 +107,33 @@ static void pvr_copy_frame(const uint16_t *src, unsigned src_w, unsigned src_h,
    }
 }
 
-static void pvr_upload_texture(const void *src, pvr_ptr_t dst, size_t bytes,
-      unsigned stride_w)
+static void pvr_dma_wait(void)
+{
+   if (!pvr_dma_inflight)
+      return;
+
+   while (!pvr_dma_ready())
+      ;
+
+   pvr_front_idx   = pvr_dma_idx;
+   pvr_dma_inflight = false;
+}
+
+static void pvr_upload_texture_async(void *src, pvr_ptr_t dst, size_t bytes,
+      unsigned stride_w, unsigned idx)
+{
+   pvr_dma_wait();
+
+   pvr_txr_load_dma(src, dst, (uint32_t)bytes, 0, NULL, 0);
+   pvr_dma_inflight = true;
+   pvr_dma_idx      = idx;
+
+   if (stride_w)
+      pvr_txr_set_stride(stride_w);
+}
+
+static void pvr_upload_texture_blocking(const void *src, pvr_ptr_t dst,
+      size_t bytes, unsigned stride_w)
 {
    pvr_txr_load_dma((void *)src, dst, (uint32_t)bytes, 1, NULL, 0);
 
@@ -239,7 +266,8 @@ static void pvr_draw_notify(void)
 
    dc_notify_render_argb1555(notify_staging, DC_NOTIFY_TEX_W, DC_NOTIFY_TEX_H,
          DC_NOTIFY_TEX_W);
-   pvr_upload_texture(notify_staging, notify_texture, DC_NOTIFY_TEX_BYTES, 0);
+   pvr_upload_texture_blocking(notify_staging, notify_texture,
+         DC_NOTIFY_TEX_BYTES, 0);
    pvr_prepare_notify_hdr();
 
    pvr_list_begin(PVR_LIST_TR_POLY);
@@ -296,7 +324,7 @@ static void pvr_draw_menu(void)
       return;
 
    bytes = (size_t)menu_tex_w * menu_tex_h * sizeof(uint16_t);
-   pvr_upload_texture(menu_staging, menu_texture, bytes, menu_tex_w);
+   pvr_upload_texture_blocking(menu_staging, menu_texture, bytes, menu_tex_w);
    pvr_prepare_menu_hdr();
 
    pvr_list_begin(PVR_LIST_TR_POLY);
@@ -381,6 +409,8 @@ static void pvr_free_buffers(void)
    notify_hdr_ready = false;
    pvr_front_idx = 0;
    pvr_has_frame = false;
+   pvr_dma_inflight = false;
+   pvr_dma_idx = 0;
 }
 
 static void pvr_prepare_ui_hdr(unsigned width, unsigned height)
@@ -467,6 +497,7 @@ void dc_pvr_shutdown(void)
    if (!pvr_ready)
       return;
 
+   pvr_dma_wait();
    pvr_free_buffers();
    pvr_shutdown();
    pvr_ready = false;
@@ -500,10 +531,21 @@ void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
 
       back_idx = 1u - pvr_front_idx;
       pvr_copy_frame(src, src_w, src_h, src_pitch, pvr_staging[back_idx]);
-      pvr_upload_texture(pvr_staging[back_idx], pvr_texture[back_idx],
-            DC_PVR_TEX_BYTES, DC_PVR_TEX_W);
-      pvr_front_idx = back_idx;
-      pvr_has_frame = true;
+
+      if (!pvr_has_frame
+            || memcmp(pvr_staging[back_idx], pvr_staging[pvr_front_idx],
+                  DC_PVR_TEX_BYTES) != 0)
+      {
+         pvr_upload_texture_async(pvr_staging[back_idx], pvr_texture[back_idx],
+               DC_PVR_TEX_BYTES, DC_PVR_TEX_W, back_idx);
+         pvr_has_frame = true;
+      }
+   }
+
+   if (pvr_dma_inflight && pvr_dma_ready())
+   {
+      pvr_front_idx    = pvr_dma_idx;
+      pvr_dma_inflight = false;
    }
 
    scale = pvr_clamp_scale(scale ? scale : 1, DC_PVR_TEX_W, DC_PVR_TEX_H);
@@ -538,7 +580,7 @@ void dc_pvr_present_ui(const uint16_t *src, unsigned width, unsigned height,
       return;
 
    bytes = (size_t)width * height * sizeof(uint16_t);
-   pvr_upload_texture(src, ui_texture, bytes, width);
+   pvr_upload_texture_blocking(src, ui_texture, bytes, width);
    pvr_prepare_ui_hdr(width, height);
 
    pvr_scene_begin();

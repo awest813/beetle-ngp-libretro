@@ -40,7 +40,7 @@ Launcher menus use `dc_ui.c` (shared RGB555 buffer + `dc_pvr_present_ui` when PV
 | 1 — PVR init + texture upload | **Done** (`dreamcast/dc_pvr.c`) |
 | 2 — Scaled hardware quad | **Done** (scale via polygon size) |
 | 3 — `dc_video` integration + setting | **Done** (`renderer=0\|1` in cfg, launcher) |
-| 4 — Optimizations | **Done** (DMA upload, double-buffer, frame dup) |
+| 4 — Optimizations | **Done** (async DMA, double-buffer, dirty skip, frame dup) |
 | 5 — PVR UI | **Done** (launcher menus via `dc_ui` + `dc_pvr_present_ui`) |
 
 Launcher setting: **Renderer → Software / PVR**. Menus temporarily shut down PVR and use `vram_s` directly.

@@ -68,6 +68,7 @@ static void apply_vmu_settings(void)
    const dc_settings_t *cfg = dc_settings_get();
 
    dc_vmu_set_enabled(cfg->vmu_lcd, cfg->vmu_save_sync);
+   dc_vmu_rescan();
 }
 
 static void apply_audio_settings(void)
@@ -274,13 +275,19 @@ static void save_battery_with_notify(void)
 
    dc_saves_sync_battery();
 
-   if (cfg->vmu_save_sync)
-      dc_vmu_sync_flash_to_vmu(loaded_rom_path);
-
    if (dc_saves_flash_exists(loaded_rom_path))
    {
+      bool vmu_ok = true;
+
       dc_vmu_set_game(loaded_rom_path, true);
-      dc_notify_show("Battery saved", 90);
+
+      if (cfg->vmu_save_sync)
+      {
+         vmu_ok = dc_vmu_sync_flash_to_vmu(loaded_rom_path);
+         dc_notify_show(vmu_ok ? "Battery+VMU saved" : "Battery saved, VMU fail", 90);
+      }
+      else
+         dc_notify_show("Battery saved", 90);
    }
    else
       dc_notify_show("Battery save failed", 90);
@@ -496,7 +503,9 @@ int main(int argc, char **argv)
    }
 
    retro_unload_game();
-   dc_vmu_sync_flash_to_vmu(loaded_rom_path);
+
+   if (dc_settings_get()->vmu_save_sync)
+      dc_vmu_sync_flash_to_vmu(loaded_rom_path);
    if (audio_stream)
    {
       dc_audio_destroy(audio_stream);

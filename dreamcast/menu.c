@@ -374,10 +374,21 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings,
    draw_text(20, y, (selected == 9) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "  VMU: %u   Cable: %s   %ux%u",
-         dc_vmu_device_count(),
-         dc_video_cable_name(dc_video_get_cable()),
-         dc_video_width(), dc_video_height());
+   {
+      char vmu_slot[16] = "-";
+
+      if (dc_vmu_device_count() > 0)
+         dc_vmu_get_slot_path(0, vmu_slot, sizeof(vmu_slot));
+
+      snprintf(line, sizeof(line), "  VMU: %u (%s)  %ux%u",
+            dc_vmu_device_count(), vmu_slot,
+            dc_video_width(), dc_video_height());
+      draw_text(20, y, 0, line);
+      y += 20;
+   }
+
+   snprintf(line, sizeof(line), "  Cable: %s",
+         dc_video_cable_name(dc_video_get_cable()));
    draw_text(20, y, 0, line);
    y += 20;
    snprintf(line, sizeof(line), "  Config: %s", DC_SETTINGS_PATH);
