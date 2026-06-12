@@ -47,7 +47,7 @@ cd dreamcast
 make
 ```
 
-Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, vsync, auto-load state, audio on/off, save directory). Battery saves (`.flash`) and save states (`.state`) live in the save directory.
+Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, vsync, auto-load state, audio on/off, save directory). Battery saves (`.flash`) and save states (`.state`) live in the save directory. Optional VMU LCD status and VMU flash mirroring are supported in the standalone launcher (see `dreamcast/HARDWARE_RENDERING.md` for the PVR hardware rendering plan).
 
 ## Layout
 
@@ -56,6 +56,8 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 | `overlay/gfx/drivers/dc_gfx.c` | RGB555 VRAM blit video driver |
 | `overlay/audio/drivers/dc_audio.c` | RetroArch wrapper around shared `dreamcast/dc_audio.c` |
 | `dreamcast/dc_video.c` | Shared VGA/TV mode selection and blitter (copied at build time) |
+| `dreamcast/dc_vmu.c` | VMU LCD status and optional flash mirroring (launcher) |
+| `dreamcast/HARDWARE_RENDERING.md` | PowerVR hardware rendering roadmap |
 | `dreamcast/dc_audio.c` | Shared KOS `snd_stream` ring buffer (copied at build time) |
 | `overlay/input/drivers_joypad/dc_joypad.c` | Maple controller joypad |
 | `overlay/input/drivers/dc_input.c` | Minimal input driver |

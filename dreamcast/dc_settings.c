@@ -24,6 +24,8 @@ void dc_settings_set_defaults(dc_settings_t *settings)
    settings->audio_enabled   = true;
    settings->vsync           = true;
    settings->auto_load_state = false;
+   settings->vmu_lcd         = true;
+   settings->vmu_save_sync   = false;
    strncpy(settings->save_dir, "/sd/ngp", sizeof(settings->save_dir) - 1);
    strncpy(settings->system_dir, "/sd", sizeof(settings->system_dir) - 1);
    settings->save_dir[sizeof(settings->save_dir) - 1]   = '\0';
@@ -71,6 +73,10 @@ void dc_settings_load(dc_settings_t *settings)
          settings->vsync = (strtoul(value, NULL, 10) != 0);
       else if (!strcmp(key, "auto_load_state"))
          settings->auto_load_state = (strtoul(value, NULL, 10) != 0);
+      else if (!strcmp(key, "vmu_lcd"))
+         settings->vmu_lcd = (strtoul(value, NULL, 10) != 0);
+      else if (!strcmp(key, "vmu_save"))
+         settings->vmu_save_sync = (strtoul(value, NULL, 10) != 0);
       else if (!strcmp(key, "save_dir"))
          strncpy(settings->save_dir, value, sizeof(settings->save_dir) - 1);
       else if (!strcmp(key, "system_dir"))
@@ -102,6 +108,8 @@ void dc_settings_save(const dc_settings_t *settings)
    fprintf(file, "audio=%u\n", settings->audio_enabled ? 1 : 0);
    fprintf(file, "vsync=%u\n", settings->vsync ? 1 : 0);
    fprintf(file, "auto_load_state=%u\n", settings->auto_load_state ? 1 : 0);
+   fprintf(file, "vmu_lcd=%u\n", settings->vmu_lcd ? 1 : 0);
+   fprintf(file, "vmu_save=%u\n", settings->vmu_save_sync ? 1 : 0);
    fprintf(file, "save_dir=%s\n", settings->save_dir);
    fprintf(file, "system_dir=%s\n", settings->system_dir);
    fclose(file);

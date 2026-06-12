@@ -11,6 +11,7 @@
 #include "dc_input.h"
 #include "dc_notify.h"
 #include "dc_saves.h"
+#include "dc_vmu.h"
 #include "dc_settings.h"
 #include "dc_video.h"
 #include "menu.h"
@@ -57,6 +58,13 @@ static void retro_log_printf(enum retro_log_level level, const char *fmt, ...)
    va_end(args);
 }
 
+static void apply_vmu_settings(void)
+{
+   const dc_settings_t *cfg = dc_settings_get();
+
+   dc_vmu_set_enabled(cfg->vmu_lcd, cfg->vmu_save_sync);
+}
+
 static void apply_audio_settings(void)
 {
    const dc_settings_t *cfg = dc_settings_get();
@@ -100,6 +108,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
    dc_video_blitter_rgb555(blitter, data, width, height, pitch);
    dc_video_blitter_present(blitter, vsync_enabled);
    dc_notify_draw();
+   dc_vmu_feed_frame((const uint16_t *)data, width, height, pitch);
 }
 
 static void audio_sample(int16_t left, int16_t right)
@@ -290,6 +299,8 @@ int main(int argc, char **argv)
    dc_settings_load(dc_settings_get());
    apply_video_settings();
    dc_saves_ensure_dir();
+   dc_vmu_init();
+   apply_vmu_settings();
 
    blitter = dc_video_blitter_create(video_scale);
    if (!blitter)
@@ -324,6 +335,7 @@ int main(int argc, char **argv)
    {
       printf("beetlengp: no ROM selected\n");
       retro_deinit();
+      dc_vmu_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 0;
@@ -337,10 +349,13 @@ int main(int argc, char **argv)
       printf("beetlengp: failed to read ROM '%s'\n", rom_path);
       free(menu_path);
       retro_deinit();
+      dc_vmu_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 1;
    }
+
+   dc_vmu_load_flash_from_vmu(rom_path);
 
    memset(&game, 0, sizeof(game));
    game.path = rom_path;
@@ -353,6 +368,7 @@ int main(int argc, char **argv)
       free(rom_data);
       free(menu_path);
       retro_deinit();
+      dc_vmu_shutdown();
       dc_video_blitter_destroy(blitter);
       dc_video_shutdown();
       return 1;
@@ -364,8 +380,10 @@ int main(int argc, char **argv)
          av_info.timing.fps,
          av_info.timing.sample_rate);
 
+   dc_vmu_set_game(rom_path, dc_saves_flash_exists(rom_path));
    if (dc_saves_flash_exists(rom_path))
       printf("beetlengp: found battery save\n");
+   printf("beetlengp: VMU devices=%u\n", dc_vmu_device_count());
 
    audio_stream = dc_audio_create((unsigned)av_info.timing.sample_rate);
    if (audio_stream)
@@ -398,6 +416,7 @@ int main(int argc, char **argv)
          menu_settings();
          apply_video_settings();
          apply_audio_settings();
+         apply_vmu_settings();
          dc_saves_ensure_dir();
          dc_audio_resume(audio_stream);
          previous_buttons = 0;
@@ -408,9 +427,11 @@ int main(int argc, char **argv)
 
       retro_run();
       dc_notify_tick();
+      dc_vmu_on_frame();
    }
 
    retro_unload_game();
+   dc_vmu_sync_flash_to_vmu(loaded_rom_path);
    if (audio_stream)
    {
       dc_audio_destroy(audio_stream);
@@ -420,6 +441,7 @@ int main(int argc, char **argv)
    retro_deinit();
    free(rom_data);
    free(menu_path);
+   dc_vmu_shutdown();
    dc_video_blitter_destroy(blitter);
    dc_video_shutdown();
 

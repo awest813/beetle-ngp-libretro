@@ -19,6 +19,8 @@ typedef struct dc_settings
    bool audio_enabled;
    bool vsync;
    bool auto_load_state;
+   bool vmu_lcd;
+   bool vmu_save_sync;
    char save_dir[64];
    char system_dir[64];
 } dc_settings_t;

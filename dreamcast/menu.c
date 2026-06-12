@@ -2,6 +2,7 @@
 
 #include "dc_settings.h"
 #include "dc_video.h"
+#include "dc_vmu.h"
 
 #include <kos.h>
 #include <dc/maple/controller.h>
@@ -349,12 +350,25 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    draw_text(20, y, (selected == 5) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sSave dir: %s",
-         (selected == 6) ? "> " : "  ", settings->save_dir);
+   snprintf(line, sizeof(line), "%sVMU LCD: %s",
+         (selected == 6) ? "> " : "  ",
+         settings->vmu_lcd ? "ON" : "OFF");
    draw_text(20, y, (selected == 6) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "  Cable: %s   Mode: %ux%u",
+   snprintf(line, sizeof(line), "%sVMU save: %s",
+         (selected == 7) ? "> " : "  ",
+         settings->vmu_save_sync ? "ON" : "OFF");
+   draw_text(20, y, (selected == 7) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sSave dir: %s",
+         (selected == 8) ? "> " : "  ", settings->save_dir);
+   draw_text(20, y, (selected == 8) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "  VMU: %u   Cable: %s   %ux%u",
+         dc_vmu_device_count(),
          dc_video_cable_name(dc_video_get_cable()),
          dc_video_width(), dc_video_height());
    draw_text(20, y, 0, line);
@@ -394,7 +408,7 @@ void menu_settings(void)
       }
       else if (pressed & CONT_DPAD_DOWN)
       {
-         if (selected < 6)
+         if (selected < 8)
             selected++;
       }
       else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
@@ -439,7 +453,7 @@ void menu_settings(void)
                   settings->scale);
             dirty = true;
          }
-         else if (selected == 6)
+         else if (selected == 8)
          {
             if (delta > 0)
             {
@@ -464,8 +478,13 @@ void menu_settings(void)
             settings->vsync = !settings->vsync;
          else if (selected == 5)
             settings->auto_load_state = !settings->auto_load_state;
+         else if (selected == 6)
+            settings->vmu_lcd = !settings->vmu_lcd;
+         else if (selected == 7)
+            settings->vmu_save_sync = !settings->vmu_save_sync;
 
-         if (selected == 2 || selected == 4 || selected == 5)
+         if (selected == 2 || selected == 4 || selected == 5
+               || selected == 6 || selected == 7)
             dirty = true;
       }
       else if (pressed & CONT_B || pressed & CONT_START)
