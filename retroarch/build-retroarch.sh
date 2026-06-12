@@ -40,6 +40,8 @@ cp -f "${CORE_DIR}/libretro_dreamcast.a" "${RETROARCH_DIR}/"
 
 echo "Copying Dreamcast platform overlay..."
 cp -rf "${SCRIPT_DIR}/overlay/"* "${RETROARCH_DIR}/"
+mkdir -p "${RETROARCH_DIR}/autoconfig/dc"
+cp -f "${SCRIPT_DIR}/overlay/autoconfig/dc/"*.cfg "${RETROARCH_DIR}/autoconfig/dc/" 2>/dev/null || true
 mkdir -p "${RETROARCH_DIR}/dreamcast"
 cp -f "${CORE_DIR}/dreamcast/dc_audio.c" "${CORE_DIR}/dreamcast/dc_audio.h" \
    "${CORE_DIR}/dreamcast/dc_settings.c" "${CORE_DIR}/dreamcast/dc_settings.h" \

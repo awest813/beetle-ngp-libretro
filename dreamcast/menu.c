@@ -337,9 +337,21 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    draw_text(20, y, (selected == 3) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sSave dir: %s",
-         (selected == 4) ? "> " : "  ", settings->save_dir);
+   snprintf(line, sizeof(line), "%sVSync: %s",
+         (selected == 4) ? "> " : "  ",
+         settings->vsync ? "ON" : "OFF");
    draw_text(20, y, (selected == 4) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sAuto load: %s",
+         (selected == 5) ? "> " : "  ",
+         settings->auto_load_state ? "ON" : "OFF");
+   draw_text(20, y, (selected == 5) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sSave dir: %s",
+         (selected == 6) ? "> " : "  ", settings->save_dir);
+   draw_text(20, y, (selected == 6) ? 1 : 0, line);
    y += 24;
 
    snprintf(line, sizeof(line), "  Cable: %s   Mode: %ux%u",
@@ -382,7 +394,7 @@ void menu_settings(void)
       }
       else if (pressed & CONT_DPAD_DOWN)
       {
-         if (selected < 4)
+         if (selected < 6)
             selected++;
       }
       else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
@@ -427,7 +439,7 @@ void menu_settings(void)
                   settings->scale);
             dirty = true;
          }
-         else if (selected == 4)
+         else if (selected == 6)
          {
             if (delta > 0)
             {
@@ -444,10 +456,17 @@ void menu_settings(void)
             dirty = true;
          }
       }
-      else if (pressed & CONT_A && selected == 2)
+      else if (pressed & CONT_A)
       {
-         settings->audio_enabled = !settings->audio_enabled;
-         dirty = true;
+         if (selected == 2)
+            settings->audio_enabled = !settings->audio_enabled;
+         else if (selected == 4)
+            settings->vsync = !settings->vsync;
+         else if (selected == 5)
+            settings->auto_load_state = !settings->auto_load_state;
+
+         if (selected == 2 || selected == 4 || selected == 5)
+            dirty = true;
       }
       else if (pressed & CONT_B || pressed & CONT_START)
          break;

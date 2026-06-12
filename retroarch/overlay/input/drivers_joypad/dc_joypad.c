@@ -121,26 +121,32 @@ static void dc_joypad_poll(void)
    if (dc_controller)
       state = (cont_state_t *)maple_dev_status(dc_controller);
 
+   uint32_t buttons;
+
    if (!state)
       return;
 
-   if (state->buttons & CONT_B)
+   buttons = state->buttons;
+   if (buttons & CONT_START)
+      buttons &= ~(CONT_START | CONT_A | CONT_B | CONT_X | CONT_Y);
+
+   if (buttons & CONT_B)
       cur |= (UINT64_C(1) << DC_BTN_B);
-   if (state->buttons & CONT_A)
+   if (buttons & CONT_A)
       cur |= (UINT64_C(1) << DC_BTN_A);
-   if (state->buttons & CONT_X)
+   if (buttons & CONT_X)
       cur |= (UINT64_C(1) << DC_BTN_X);
-   if (state->buttons & CONT_Y)
+   if (buttons & CONT_Y)
       cur |= (UINT64_C(1) << DC_BTN_Y);
-   if (state->buttons & CONT_START)
+   if (buttons & CONT_START)
       cur |= (UINT64_C(1) << DC_BTN_START);
-   if (state->buttons & CONT_DPAD_UP)
+   if (buttons & CONT_DPAD_UP)
       cur |= (UINT64_C(1) << DC_BTN_DPAD_UP);
-   if (state->buttons & CONT_DPAD_DOWN)
+   if (buttons & CONT_DPAD_DOWN)
       cur |= (UINT64_C(1) << DC_BTN_DPAD_DOWN);
-   if (state->buttons & CONT_DPAD_LEFT)
+   if (buttons & CONT_DPAD_LEFT)
       cur |= (UINT64_C(1) << DC_BTN_DPAD_LEFT);
-   if (state->buttons & CONT_DPAD_RIGHT)
+   if (buttons & CONT_DPAD_RIGHT)
       cur |= (UINT64_C(1) << DC_BTN_DPAD_RIGHT);
 
    if ((state->buttons & CONT_START) && (state->buttons & CONT_A))

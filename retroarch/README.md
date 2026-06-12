@@ -47,7 +47,7 @@ cd dreamcast
 make
 ```
 
-Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, audio on/off, save directory).
+Without a ROM argument, the launcher shows a main menu (Load Game / Settings / Exit). Settings are stored at `/sd/ngp/beetlengp.cfg` (volume, scale, video output, vsync, auto-load state, audio on/off, save directory). Battery saves (`.flash`) and save states (`.state`) live in the save directory.
 
 ## Layout
 
@@ -73,6 +73,9 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 | Start + B | Exit (standalone launcher only) |
 | Start + X | Load save state (standalone launcher) |
 | Start + Y | Save save state (standalone launcher) |
+| DC B | NGP A button |
+| DC A | NGP B button |
+| DC Start | NGP Option button |
 
 ## Notes
 

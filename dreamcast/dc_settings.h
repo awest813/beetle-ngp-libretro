@@ -17,6 +17,8 @@ typedef struct dc_settings
    uint8_t scale;
    uint8_t video_output;
    bool audio_enabled;
+   bool vsync;
+   bool auto_load_state;
    char save_dir[64];
    char system_dir[64];
 } dc_settings_t;

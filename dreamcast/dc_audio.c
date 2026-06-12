@@ -276,3 +276,29 @@ void dc_audio_set_enabled(dc_audio_stream_t *stream, bool enabled)
 
    stream->enabled = enabled;
 }
+
+void dc_audio_flush(dc_audio_stream_t *stream)
+{
+   if (!stream)
+      return;
+
+   stream->read_pos  = 0;
+   stream->write_pos = 0;
+}
+
+void dc_audio_pause(dc_audio_stream_t *stream)
+{
+   if (!stream)
+      return;
+
+   dc_audio_stop(stream);
+   dc_audio_flush(stream);
+}
+
+void dc_audio_resume(dc_audio_stream_t *stream)
+{
+   if (!stream)
+      return;
+
+   dc_audio_start(stream, stream->rate);
+}

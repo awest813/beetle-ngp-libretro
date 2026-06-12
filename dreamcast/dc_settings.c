@@ -20,8 +20,10 @@ void dc_settings_set_defaults(dc_settings_t *settings)
 
    settings->volume        = DC_SETTINGS_VOLUME_DEFAULT;
    settings->scale         = DC_SETTINGS_SCALE_DEFAULT;
-   settings->video_output  = DC_SETTINGS_VIDEO_DEFAULT;
-   settings->audio_enabled = true;
+   settings->video_output    = DC_SETTINGS_VIDEO_DEFAULT;
+   settings->audio_enabled   = true;
+   settings->vsync           = true;
+   settings->auto_load_state = false;
    strncpy(settings->save_dir, "/sd/ngp", sizeof(settings->save_dir) - 1);
    strncpy(settings->system_dir, "/sd", sizeof(settings->system_dir) - 1);
    settings->save_dir[sizeof(settings->save_dir) - 1]   = '\0';
@@ -65,6 +67,10 @@ void dc_settings_load(dc_settings_t *settings)
       }
       else if (!strcmp(key, "audio"))
          settings->audio_enabled = (strtoul(value, NULL, 10) != 0);
+      else if (!strcmp(key, "vsync"))
+         settings->vsync = (strtoul(value, NULL, 10) != 0);
+      else if (!strcmp(key, "auto_load_state"))
+         settings->auto_load_state = (strtoul(value, NULL, 10) != 0);
       else if (!strcmp(key, "save_dir"))
          strncpy(settings->save_dir, value, sizeof(settings->save_dir) - 1);
       else if (!strcmp(key, "system_dir"))
@@ -94,6 +100,8 @@ void dc_settings_save(const dc_settings_t *settings)
    fprintf(file, "scale=%u\n", settings->scale);
    fprintf(file, "video=%u\n", settings->video_output);
    fprintf(file, "audio=%u\n", settings->audio_enabled ? 1 : 0);
+   fprintf(file, "vsync=%u\n", settings->vsync ? 1 : 0);
+   fprintf(file, "auto_load_state=%u\n", settings->auto_load_state ? 1 : 0);
    fprintf(file, "save_dir=%s\n", settings->save_dir);
    fprintf(file, "system_dir=%s\n", settings->system_dir);
    fclose(file);

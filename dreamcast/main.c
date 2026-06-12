@@ -8,29 +8,32 @@
  */
 
 #include "dc_audio.h"
+#include "dc_input.h"
+#include "dc_notify.h"
+#include "dc_saves.h"
 #include "dc_settings.h"
 #include "dc_video.h"
 #include "menu.h"
 
 #include <kos.h>
-#include <dc/maple/controller.h>
 
 #include <libretro.h>
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #define FB_WIDTH  160
 #define FB_HEIGHT 152
 
 static dc_video_blitter_t *blitter;
 static unsigned video_scale;
+static bool vsync_enabled = true;
 
-static maple_device_t *controller;
+static dc_input_t player_input;
 static dc_audio_stream_t *audio_stream;
 static const char *loaded_rom_path;
 static uint32_t previous_buttons;
@@ -42,9 +45,16 @@ typedef enum hotkey_action
    HOTKEY_SETTINGS
 } hotkey_action_t;
 
-static void ensure_save_dir(void)
+static void retro_log_printf(enum retro_log_level level, const char *fmt, ...)
 {
-   mkdir(dc_settings_get()->save_dir, 0755);
+   const char *tag = "beetlengp";
+   va_list args;
+
+   (void)level;
+   printf("%s: ", tag);
+   va_start(args, fmt);
+   vprintf(fmt, args);
+   va_end(args);
 }
 
 static void apply_audio_settings(void)
@@ -69,6 +79,7 @@ static void apply_video_settings(void)
    if (video_scale > DC_SETTINGS_SCALE_MAX)
       video_scale = DC_SETTINGS_SCALE_MAX;
 
+   vsync_enabled = cfg->vsync;
    dc_video_reinit_for_scale(output, video_scale);
 
    if (blitter)
@@ -77,14 +88,30 @@ static void apply_video_settings(void)
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
 {
-   if (!data || !blitter)
+   if (!blitter)
+      return;
+
+   if (!data)
       return;
 
    if (width != FB_WIDTH || height != FB_HEIGHT)
       return;
 
    dc_video_blitter_rgb555(blitter, data, width, height, pitch);
-   dc_video_blitter_present(blitter, true);
+   dc_video_blitter_present(blitter, vsync_enabled);
+   dc_notify_draw();
+}
+
+static void audio_sample(int16_t left, int16_t right)
+{
+   int16_t frame[2];
+
+   if (!audio_stream)
+      return;
+
+   frame[0] = left;
+   frame[1] = right;
+   dc_audio_write(audio_stream, frame, 1, false);
 }
 
 static size_t audio_sample_batch(const int16_t *data, size_t frames)
@@ -97,44 +124,18 @@ static size_t audio_sample_batch(const int16_t *data, size_t frames)
 
 static void input_poll(void)
 {
+   dc_input_poll(&player_input);
 }
 
 static int16_t input_state(unsigned port, unsigned device,
       unsigned index, unsigned id)
 {
-   cont_state_t *state;
-
    (void)index;
 
-   if (port != 0 || device != RETRO_DEVICE_JOYPAD)
+   if (port != player_input.port)
       return 0;
 
-   if (!controller)
-      return 0;
-
-   state = (cont_state_t *)maple_dev_status(controller);
-   if (!state)
-      return 0;
-
-   switch (id)
-   {
-      case RETRO_DEVICE_ID_JOYPAD_UP:
-         return (state->buttons & CONT_DPAD_UP) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_DOWN:
-         return (state->buttons & CONT_DPAD_DOWN) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_LEFT:
-         return (state->buttons & CONT_DPAD_LEFT) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_RIGHT:
-         return (state->buttons & CONT_DPAD_RIGHT) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_B:
-         return (state->buttons & CONT_B) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_A:
-         return (state->buttons & CONT_A) ? 1 : 0;
-      case RETRO_DEVICE_ID_JOYPAD_START:
-         return (state->buttons & CONT_START) ? 1 : 0;
-      default:
-         return 0;
-   }
+   return dc_input_state(&player_input, device, id);
 }
 
 static bool environment(unsigned cmd, void *data)
@@ -152,6 +153,15 @@ static bool environment(unsigned cmd, void *data)
       case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
          *(const char **)data = cfg->save_dir;
          return true;
+      case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
+         return true;
+      case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+      {
+         struct retro_log_callback *log = (struct retro_log_callback *)data;
+
+         log->log = retro_log_printf;
+         return true;
+      }
       case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
          if (*(const enum retro_pixel_format *)data == RETRO_PIXEL_FORMAT_0RGB1555)
             return true;
@@ -234,140 +244,33 @@ static const char *pick_rom_path(int argc, char **argv, char **menu_owned_out)
    return NULL;
 }
 
-static void make_state_path(char *out, size_t out_len, const char *rom_path)
-{
-   const char *base;
-   char name[128];
-   char *dot;
-   const dc_settings_t *cfg = dc_settings_get();
-
-   base = strrchr(rom_path, '/');
-   base = base ? base + 1 : rom_path;
-
-   strncpy(name, base, sizeof(name) - 1);
-   name[sizeof(name) - 1] = '\0';
-
-   dot = strrchr(name, '.');
-   if (dot)
-      *dot = '\0';
-
-   snprintf(out, out_len, "%s/%s.state", cfg->save_dir, name);
-}
-
-static bool save_state_file(const char *rom_path)
-{
-   char path[256];
-   size_t size;
-   void *buffer;
-   FILE *file;
-
-   size = retro_serialize_size();
-   if (!size)
-      return false;
-
-   buffer = malloc(size);
-   if (!buffer)
-      return false;
-
-   if (!retro_serialize(buffer, size))
-   {
-      free(buffer);
-      return false;
-   }
-
-   make_state_path(path, sizeof(path), rom_path);
-   file = fopen(path, "wb");
-   if (!file)
-   {
-      free(buffer);
-      return false;
-   }
-
-   fwrite(buffer, 1, size, file);
-   fclose(file);
-   free(buffer);
-
-   printf("beetlengp: saved state to %s\n", path);
-   return true;
-}
-
-static bool load_state_file(const char *rom_path)
-{
-   char path[256];
-   size_t size;
-   void *buffer;
-   FILE *file;
-   long file_size;
-
-   make_state_path(path, sizeof(path), rom_path);
-   file = fopen(path, "rb");
-   if (!file)
-      return false;
-
-   size = retro_serialize_size();
-   if (!size)
-   {
-      fclose(file);
-      return false;
-   }
-
-   fseek(file, 0, SEEK_END);
-   file_size = ftell(file);
-   rewind(file);
-
-   if ((size_t)file_size != size)
-   {
-      fclose(file);
-      return false;
-   }
-
-   buffer = malloc(size);
-   if (!buffer)
-   {
-      fclose(file);
-      return false;
-   }
-
-   if (fread(buffer, 1, size, file) != size)
-   {
-      free(buffer);
-      fclose(file);
-      return false;
-   }
-
-   fclose(file);
-
-   if (!retro_unserialize(buffer, size))
-   {
-      free(buffer);
-      return false;
-   }
-
-   free(buffer);
-   printf("beetlengp: loaded state from %s\n", path);
-   return true;
-}
-
-static hotkey_action_t handle_hotkeys(cont_state_t *state)
+static hotkey_action_t handle_hotkeys(uint32_t buttons)
 {
    uint32_t pressed;
 
-   if (!state)
-      return HOTKEY_NONE;
+   pressed = buttons & ~previous_buttons;
+   previous_buttons = buttons;
 
-   pressed = state->buttons & ~previous_buttons;
-   previous_buttons = state->buttons;
+   if ((buttons & CONT_START) && (pressed & CONT_Y))
+   {
+      if (dc_saves_save_state(loaded_rom_path))
+         dc_notify_show("State saved", 90);
+      else
+         dc_notify_show("Save failed", 90);
+   }
 
-   if ((state->buttons & CONT_START) && (pressed & CONT_Y))
-      save_state_file(loaded_rom_path);
+   if ((buttons & CONT_START) && (pressed & CONT_X))
+   {
+      if (dc_saves_load_state(loaded_rom_path))
+         dc_notify_show("State loaded", 90);
+      else
+         dc_notify_show("Load failed", 90);
+   }
 
-   if ((state->buttons & CONT_START) && (pressed & CONT_X))
-      load_state_file(loaded_rom_path);
-
-   if ((state->buttons & CONT_START) && (pressed & CONT_A))
+   if ((buttons & CONT_START) && (pressed & CONT_A))
       return HOTKEY_SETTINGS;
 
-   if ((state->buttons & CONT_START) && (pressed & CONT_B))
+   if ((buttons & CONT_START) && (pressed & CONT_B))
       return HOTKEY_QUIT;
 
    return HOTKEY_NONE;
@@ -386,7 +289,7 @@ int main(int argc, char **argv)
 
    dc_settings_load(dc_settings_get());
    apply_video_settings();
-   ensure_save_dir();
+   dc_saves_ensure_dir();
 
    blitter = dc_video_blitter_create(video_scale);
    if (!blitter)
@@ -395,16 +298,17 @@ int main(int argc, char **argv)
       return 1;
    }
 
+   player_input.port = 0;
+
    printf("beetlengp: video %ux%u cable=%s output=%s scale=%ux\n",
          dc_video_width(), dc_video_height(),
          dc_video_cable_name(dc_video_get_cable()),
          dc_video_output_name((dc_video_output_t)dc_settings_get()->video_output),
          video_scale);
 
-   controller = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
-
    retro_set_environment(environment);
    retro_set_video_refresh(video_refresh);
+   retro_set_audio_sample(audio_sample);
    retro_set_audio_sample_batch(audio_sample_batch);
    retro_set_input_poll(input_poll);
    retro_set_input_state(input_state);
@@ -460,30 +364,42 @@ int main(int argc, char **argv)
          av_info.timing.fps,
          av_info.timing.sample_rate);
 
+   if (dc_saves_flash_exists(rom_path))
+      printf("beetlengp: found battery save\n");
+
    audio_stream = dc_audio_create((unsigned)av_info.timing.sample_rate);
    if (audio_stream)
       dc_audio_start(audio_stream, (unsigned)av_info.timing.sample_rate);
 
    apply_audio_settings();
+
+   if (dc_settings_get()->auto_load_state && dc_saves_state_exists(rom_path))
+   {
+      if (dc_saves_load_state(rom_path))
+         dc_notify_show("Auto-loaded state", 120);
+   }
+
    previous_buttons = 0;
 
    for (;;)
    {
-      cont_state_t *state = NULL;
+      uint32_t buttons;
 
-      if (controller)
-         state = (cont_state_t *)maple_dev_status(controller);
+      dc_input_poll(&player_input);
+      buttons = dc_input_maple_buttons(&player_input);
 
-      action = handle_hotkeys(state);
+      action = handle_hotkeys(buttons);
       if (action == HOTKEY_QUIT)
          break;
 
       if (action == HOTKEY_SETTINGS)
       {
+         dc_audio_pause(audio_stream);
          menu_settings();
          apply_video_settings();
          apply_audio_settings();
-         ensure_save_dir();
+         dc_saves_ensure_dir();
+         dc_audio_resume(audio_stream);
          previous_buttons = 0;
       }
 
@@ -491,15 +407,16 @@ int main(int argc, char **argv)
          dc_audio_poll(audio_stream);
 
       retro_run();
+      dc_notify_tick();
    }
 
+   retro_unload_game();
    if (audio_stream)
    {
       dc_audio_destroy(audio_stream);
       audio_stream = NULL;
    }
 
-   retro_unload_game();
    retro_deinit();
    free(rom_data);
    free(menu_path);
