@@ -202,6 +202,7 @@ char *menu_pick_rom(void)
       thd_sleep(16);
    }
 
+   dc_video_menu_end();
    return result;
 }
 
@@ -241,6 +242,8 @@ menu_action_t menu_main(char **rom_path_out)
 
    if (rom_path_out)
       *rom_path_out = NULL;
+
+   dc_video_menu_begin();
 
    for (;;)
    {
@@ -302,6 +305,7 @@ menu_action_t menu_main(char **rom_path_out)
       thd_sleep(16);
    }
 
+   dc_video_menu_end();
    return action;
 }
 
@@ -338,33 +342,39 @@ static void draw_settings_menu(int selected, const dc_settings_t *settings)
    draw_text(20, y, (selected == 3) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sVSync: %s",
+   snprintf(line, sizeof(line), "%sRenderer: %s",
          (selected == 4) ? "> " : "  ",
-         settings->vsync ? "ON" : "OFF");
+         dc_video_renderer_name((dc_video_renderer_t)settings->video_renderer));
    draw_text(20, y, (selected == 4) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sAuto load: %s",
+   snprintf(line, sizeof(line), "%sVSync: %s",
          (selected == 5) ? "> " : "  ",
-         settings->auto_load_state ? "ON" : "OFF");
+         settings->vsync ? "ON" : "OFF");
    draw_text(20, y, (selected == 5) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sVMU LCD: %s",
+   snprintf(line, sizeof(line), "%sAuto load: %s",
          (selected == 6) ? "> " : "  ",
-         settings->vmu_lcd ? "ON" : "OFF");
+         settings->auto_load_state ? "ON" : "OFF");
    draw_text(20, y, (selected == 6) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sVMU save: %s",
+   snprintf(line, sizeof(line), "%sVMU LCD: %s",
          (selected == 7) ? "> " : "  ",
-         settings->vmu_save_sync ? "ON" : "OFF");
+         settings->vmu_lcd ? "ON" : "OFF");
    draw_text(20, y, (selected == 7) ? 1 : 0, line);
    y += 24;
 
-   snprintf(line, sizeof(line), "%sSave dir: %s",
-         (selected == 8) ? "> " : "  ", settings->save_dir);
+   snprintf(line, sizeof(line), "%sVMU save: %s",
+         (selected == 8) ? "> " : "  ",
+         settings->vmu_save_sync ? "ON" : "OFF");
    draw_text(20, y, (selected == 8) ? 1 : 0, line);
+   y += 24;
+
+   snprintf(line, sizeof(line), "%sSave dir: %s",
+         (selected == 9) ? "> " : "  ", settings->save_dir);
+   draw_text(20, y, (selected == 9) ? 1 : 0, line);
    y += 24;
 
    snprintf(line, sizeof(line), "  VMU: %u   Cable: %s   %ux%u",
@@ -384,6 +394,8 @@ void menu_settings(void)
    uint32_t previous = 0;
    int selected = 0;
    bool dirty = false;
+
+   dc_video_menu_begin();
 
    for (;;)
    {
@@ -408,7 +420,7 @@ void menu_settings(void)
       }
       else if (pressed & CONT_DPAD_DOWN)
       {
-         if (selected < 8)
+         if (selected < 9)
             selected++;
       }
       else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
@@ -453,7 +465,20 @@ void menu_settings(void)
                   settings->scale);
             dirty = true;
          }
-         else if (selected == 8)
+         else if (selected == 4)
+         {
+            int next = (int)settings->video_renderer + delta;
+
+            if (next < 0)
+               next = DC_VIDEO_RENDERER_COUNT - 1;
+            if (next >= DC_VIDEO_RENDERER_COUNT)
+               next = 0;
+
+            settings->video_renderer = (uint8_t)next;
+            dc_video_set_renderer((dc_video_renderer_t)settings->video_renderer);
+            dirty = true;
+         }
+         else if (selected == 9)
          {
             if (delta > 0)
             {
@@ -474,17 +499,17 @@ void menu_settings(void)
       {
          if (selected == 2)
             settings->audio_enabled = !settings->audio_enabled;
-         else if (selected == 4)
-            settings->vsync = !settings->vsync;
          else if (selected == 5)
-            settings->auto_load_state = !settings->auto_load_state;
+            settings->vsync = !settings->vsync;
          else if (selected == 6)
-            settings->vmu_lcd = !settings->vmu_lcd;
+            settings->auto_load_state = !settings->auto_load_state;
          else if (selected == 7)
+            settings->vmu_lcd = !settings->vmu_lcd;
+         else if (selected == 8)
             settings->vmu_save_sync = !settings->vmu_save_sync;
 
-         if (selected == 2 || selected == 4 || selected == 5
-               || selected == 6 || selected == 7)
+         if (selected == 2 || selected == 5 || selected == 6
+               || selected == 7 || selected == 8)
             dirty = true;
       }
       else if (pressed & CONT_B || pressed & CONT_START)
@@ -495,4 +520,6 @@ void menu_settings(void)
 
    if (dirty)
       dc_settings_save(settings);
+
+   dc_video_menu_end();
 }

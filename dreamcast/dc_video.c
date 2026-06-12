@@ -1,13 +1,16 @@
 /* Shared Dreamcast video backend (KallistiOS / RGB555 VRAM) */
 
 #include "dc_video.h"
+#include "dc_pvr.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 static dc_video_output_t active_output = DC_VIDEO_OUTPUT_AUTO;
+static dc_video_renderer_t active_renderer = DC_VIDEO_RENDERER_SOFTWARE;
 static unsigned active_scale = 3;
 static bool video_ready;
+static bool menu_using_software;
 
 static int8_t effective_cable(dc_video_output_t pref, int8_t cable)
 {
@@ -65,6 +68,62 @@ const char *dc_video_cable_name(int8_t cable)
    }
 }
 
+const char *dc_video_renderer_name(dc_video_renderer_t renderer)
+{
+   switch (renderer)
+   {
+      case DC_VIDEO_RENDERER_SOFTWARE:
+         return "Software";
+      case DC_VIDEO_RENDERER_PVR:
+         return "PVR";
+      default:
+         return "Software";
+   }
+}
+
+void dc_video_set_renderer(dc_video_renderer_t renderer)
+{
+   if (renderer >= DC_VIDEO_RENDERER_COUNT)
+      renderer = DC_VIDEO_RENDERER_SOFTWARE;
+
+   if (active_renderer == renderer)
+      return;
+
+   if (active_renderer == DC_VIDEO_RENDERER_PVR)
+      dc_pvr_shutdown();
+
+   active_renderer = renderer;
+
+   if (active_renderer == DC_VIDEO_RENDERER_PVR && video_ready && !menu_using_software)
+      dc_pvr_init();
+}
+
+dc_video_renderer_t dc_video_get_renderer(void)
+{
+   return active_renderer;
+}
+
+void dc_video_menu_begin(void)
+{
+   if (active_renderer != DC_VIDEO_RENDERER_PVR)
+      return;
+
+   menu_using_software = true;
+   dc_pvr_shutdown();
+}
+
+void dc_video_menu_end(void)
+{
+   if (active_renderer != DC_VIDEO_RENDERER_PVR)
+   {
+      menu_using_software = false;
+      return;
+   }
+
+   menu_using_software = false;
+   dc_pvr_init();
+}
+
 const char *dc_video_output_name(dc_video_output_t output)
 {
    switch (output)
@@ -92,6 +151,10 @@ bool dc_video_init_for_scale(dc_video_output_t output, unsigned scale)
    active_output = output;
    active_scale  = scale;
    video_ready   = true;
+
+   if (active_renderer == DC_VIDEO_RENDERER_PVR && !menu_using_software)
+      dc_pvr_init();
+
    return true;
 }
 
@@ -336,6 +399,31 @@ void dc_video_blitter_rgb555(dc_video_blitter_t *blitter,
          memcpy(dst_base + sy * blitter->buf_w,
                blitter->row_scratch, draw_w * sizeof(uint16_t));
    }
+}
+
+void dc_video_present_rgb555(const void *src, unsigned src_w, unsigned src_h,
+      size_t src_pitch, unsigned scale, bool vsync)
+{
+   if (active_renderer == DC_VIDEO_RENDERER_PVR && !menu_using_software)
+   {
+      if (src)
+      {
+         if (!src_w || !src_h)
+            return;
+
+         dc_pvr_present((const uint16_t *)src, src_w, src_h, src_pitch, scale, vsync);
+      }
+      else
+         dc_pvr_present(NULL, src_w, src_h, src_pitch, scale, vsync);
+
+      return;
+   }
+
+   if (!src || !src_w || !src_h)
+      return;
+
+   if (scale < 1)
+      scale = 1;
 }
 
 void dc_video_blitter_present(dc_video_blitter_t *blitter, bool vsync)

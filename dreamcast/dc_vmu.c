@@ -108,10 +108,7 @@ static void vmu_build_preview(const uint16_t *frame, unsigned width, unsigned he
    unsigned y, x;
 
    if (!frame || !width || !height)
-   {
-      vmu.preview_valid = false;
       return;
-   }
 
    memset(vmu.preview, 0, sizeof(vmu.preview));
 

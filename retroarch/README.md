@@ -81,7 +81,7 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 
 ## Notes
 
-- Video uses a shared `dreamcast/dc_video.c` backend. Cable type is detected via `vid_check_cable()`; **Auto** picks the best mode for the cable and scale factor (e.g. `DM_800x608_VGA` at 4× on VGA, `DM_320x240_NTSC` at 2× on composite, `DM_640x480_VGA` at 3× on VGA). Settings allow forcing VGA or TV output.
+- Video uses a shared `dreamcast/dc_video.c` backend with optional **PVR hardware rendering** (`dreamcast/dc_pvr.c`, setting `renderer=1`). Cable type is detected via `vid_check_cable()`; **Auto** picks the best mode for the cable and scale factor. Settings allow forcing VGA/TV output and Software/PVR renderer.
 - Audio uses a shared `dreamcast/dc_audio.c` backend with software volume and mute support. The KOS stream callback expects **byte counts** (not sample frames); output is locked to **44100 Hz** stereo to match Beetle NGP.
 - RetroArch reads volume/mute/video from the same `beetlengp.cfg` as the standalone launcher when drivers start.
 - Upstream RetroArch has no official Dreamcast port; this overlay lives in beetle-ngp-libretro until drivers can move upstream.

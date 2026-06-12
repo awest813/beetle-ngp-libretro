@@ -33,6 +33,18 @@ retro_run()
 
 Menus (`menu.c`), notifications (`dc_notify.c`), and VMU LCD (`dc_vmu.c`) can continue using `vram_s` / `vmufb` until PVR owns the full frame.
 
+## Implementation status
+
+| Phase | Status |
+|-------|--------|
+| 1 — PVR init + texture upload | **Done** (`dreamcast/dc_pvr.c`) |
+| 2 — Scaled hardware quad | **Done** (scale via polygon size) |
+| 3 — `dc_video` integration + setting | **Done** (`renderer=0\|1` in cfg, launcher) |
+| 4 — Optimizations | **Done** (DMA upload, double-buffer, frame dup) |
+| 5 — PVR UI | Partial (PVR toast overlay; menus still software) |
+
+Launcher setting: **Renderer → Software / PVR**. Menus temporarily shut down PVR and use `vram_s` directly.
+
 ## Phase 1 — PVR init and texture upload
 
 **Files:** `dreamcast/dc_pvr.c`, `dreamcast/dc_pvr.h`
@@ -78,13 +90,19 @@ void dc_video_blitter_present(dc_video_blitter_t *b, bool vsync)
 
 ## Phase 4 — Optimizations
 
+**Status:** Implemented in `dc_pvr.c`.
+
 | Optimization | Benefit |
 |--------------|---------|
-| `PVR_TXRLOAD_DMA` / store queues | Faster texture upload |
-| Double-buffered PVR texture | Upload N while displaying N−1 |
-| Dirty-rectangle upload | Skip upload when `data == NULL` (frame dup) |
-| 256×256 padded texture | Avoid stride path if stride causes artifacts |
+| `pvr_txr_load_dma` (blocking) | Hardware DMA texture upload |
+| Double-buffered PVR texture | Ping-pong staging + VRAM textures |
+| Frame dup (`src == NULL`) | Skip upload; redraw last texture + overlay |
+| PVR notification overlay | Toasts on translucent TR poly (`dc_notify.c`) |
+| 256×256 padded texture | Stride mode for 160×152 game framebuffer |
 | RGB565 PVR format | If core ever runs 16-bit on DC (currently 15-bit) |
+
+Launcher and RetroArch pass `NULL` to `video_refresh` / `dc_gfx_frame` on frame dup;
+`dc_video_present_rgb555(NULL, …)` re-presents the last uploaded texture.
 
 ## Technical constraints
 

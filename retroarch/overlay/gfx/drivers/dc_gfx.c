@@ -125,6 +125,7 @@ static void *dc_gfx_init(const video_info_t *video,
    dc_settings_load(dc_settings_get());
    cfg = dc_settings_get();
 
+   dc_video_set_renderer((dc_video_renderer_t)cfg->video_renderer);
    dc_video_init_for_scale((dc_video_output_t)cfg->video_output, cfg->scale);
 
    dc->scale       = cfg->scale ? cfg->scale : 3;
@@ -158,10 +159,14 @@ static bool dc_gfx_frame(void *data, const void *frame,
    if (!dc)
       return false;
 
-   if (frame)
+   if (dc_video_get_renderer() == DC_VIDEO_RENDERER_PVR)
+      dc_video_present_rgb555(frame, width, height, pitch, dc->scale, dc->vsync);
+   else if (frame)
+   {
       dc_blit_frame(dc, frame, width, height, pitch);
+      dc_video_blitter_present(dc->blitter, dc->vsync);
+   }
 
-   dc_video_blitter_present(dc->blitter, dc->vsync);
    return true;
 }
 

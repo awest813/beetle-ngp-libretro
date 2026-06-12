@@ -21,6 +21,7 @@ void dc_settings_set_defaults(dc_settings_t *settings)
    settings->volume        = DC_SETTINGS_VOLUME_DEFAULT;
    settings->scale         = DC_SETTINGS_SCALE_DEFAULT;
    settings->video_output    = DC_SETTINGS_VIDEO_DEFAULT;
+   settings->video_renderer  = DC_SETTINGS_RENDERER_DEFAULT;
    settings->audio_enabled   = true;
    settings->vsync           = true;
    settings->auto_load_state = false;
@@ -67,6 +68,13 @@ void dc_settings_load(dc_settings_t *settings)
          if (video < DC_VIDEO_OUTPUT_COUNT)
             settings->video_output = (uint8_t)video;
       }
+      else if (!strcmp(key, "renderer"))
+      {
+         unsigned renderer = (unsigned)strtoul(value, NULL, 10);
+
+         if (renderer < DC_VIDEO_RENDERER_COUNT)
+            settings->video_renderer = (uint8_t)renderer;
+      }
       else if (!strcmp(key, "audio"))
          settings->audio_enabled = (strtoul(value, NULL, 10) != 0);
       else if (!strcmp(key, "vsync"))
@@ -105,6 +113,7 @@ void dc_settings_save(const dc_settings_t *settings)
    fprintf(file, "volume=%u\n", settings->volume);
    fprintf(file, "scale=%u\n", settings->scale);
    fprintf(file, "video=%u\n", settings->video_output);
+   fprintf(file, "renderer=%u\n", settings->video_renderer);
    fprintf(file, "audio=%u\n", settings->audio_enabled ? 1 : 0);
    fprintf(file, "vsync=%u\n", settings->vsync ? 1 : 0);
    fprintf(file, "auto_load_state=%u\n", settings->auto_load_state ? 1 : 0);

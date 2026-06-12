@@ -85,6 +85,7 @@ OBJ := audio/drivers/dc_audio.o \
 	dreamcast/dc_audio.o \
 	dreamcast/dc_settings.o \
 	dreamcast/dc_video.o \
+	dreamcast/dc_pvr.o \
 	gfx/drivers/dc_gfx.o \
 	input/drivers/dc_input.o \
 	input/drivers_joypad/dc_joypad.o \

@@ -88,6 +88,7 @@ static void apply_video_settings(void)
       video_scale = DC_SETTINGS_SCALE_MAX;
 
    vsync_enabled = cfg->vsync;
+   dc_video_set_renderer((dc_video_renderer_t)cfg->video_renderer);
    dc_video_reinit_for_scale(output, video_scale);
 
    if (blitter)
@@ -99,16 +100,25 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
    if (!blitter)
       return;
 
-   if (!data)
-      return;
-
    if (width != FB_WIDTH || height != FB_HEIGHT)
       return;
 
-   dc_video_blitter_rgb555(blitter, data, width, height, pitch);
-   dc_video_blitter_present(blitter, vsync_enabled);
-   dc_notify_draw();
-   dc_vmu_feed_frame((const uint16_t *)data, width, height, pitch);
+   if (dc_video_get_renderer() == DC_VIDEO_RENDERER_PVR)
+   {
+      dc_video_present_rgb555(data, width, height, pitch, video_scale, vsync_enabled);
+   }
+   else
+   {
+      if (!data)
+         return;
+
+      dc_video_blitter_rgb555(blitter, data, width, height, pitch);
+      dc_video_blitter_present(blitter, vsync_enabled);
+      dc_notify_draw();
+   }
+
+   if (data)
+      dc_vmu_feed_frame((const uint16_t *)data, width, height, pitch);
 }
 
 static void audio_sample(int16_t left, int16_t right)

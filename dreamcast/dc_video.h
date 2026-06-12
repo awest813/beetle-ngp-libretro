@@ -18,6 +18,13 @@ typedef enum dc_video_output
    DC_VIDEO_OUTPUT_COUNT
 } dc_video_output_t;
 
+typedef enum dc_video_renderer
+{
+   DC_VIDEO_RENDERER_SOFTWARE = 0,
+   DC_VIDEO_RENDERER_PVR,
+   DC_VIDEO_RENDERER_COUNT
+} dc_video_renderer_t;
+
 typedef struct dc_video_blitter
 {
    uint16_t *buffer;
@@ -53,5 +60,15 @@ void dc_video_blitter_clear(dc_video_blitter_t *blitter);
 void dc_video_blitter_rgb555(dc_video_blitter_t *blitter,
       const void *src, unsigned src_w, unsigned src_h, size_t src_pitch);
 void dc_video_blitter_present(dc_video_blitter_t *blitter, bool vsync);
+
+void dc_video_set_renderer(dc_video_renderer_t renderer);
+dc_video_renderer_t dc_video_get_renderer(void);
+const char *dc_video_renderer_name(dc_video_renderer_t renderer);
+
+void dc_video_present_rgb555(const void *src, unsigned src_w, unsigned src_h,
+      size_t src_pitch, unsigned scale, bool vsync);
+
+void dc_video_menu_begin(void);
+void dc_video_menu_end(void);
 
 #endif

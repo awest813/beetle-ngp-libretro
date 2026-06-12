@@ -9,13 +9,15 @@
 #define DC_SETTINGS_SCALE_DEFAULT  3
 #define DC_SETTINGS_SCALE_MIN      2
 #define DC_SETTINGS_SCALE_MAX      4
-#define DC_SETTINGS_VIDEO_DEFAULT  0
+#define DC_SETTINGS_VIDEO_DEFAULT     0
+#define DC_SETTINGS_RENDERER_DEFAULT  0
 
 typedef struct dc_settings
 {
    uint8_t volume;
    uint8_t scale;
    uint8_t video_output;
+   uint8_t video_renderer;
    bool audio_enabled;
    bool vsync;
    bool auto_load_state;
