@@ -17,4 +17,7 @@ void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
 void dc_pvr_present_ui(const uint16_t *src, unsigned width, unsigned height,
       bool vsync);
 
+void dc_pvr_menu_set_visible(bool visible);
+void dc_pvr_menu_set_frame(const uint16_t *src, unsigned width, unsigned height);
+
 #endif

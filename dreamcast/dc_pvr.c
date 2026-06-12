@@ -44,6 +44,17 @@ static unsigned ui_tex_pow_w;
 static unsigned ui_tex_pow_h;
 static bool ui_hdr_ready;
 
+static pvr_ptr_t menu_texture;
+static pvr_poly_hdr_t menu_hdr;
+static uint16_t *menu_staging;
+static unsigned menu_tex_w;
+static unsigned menu_tex_h;
+static unsigned menu_tex_pow_w;
+static unsigned menu_tex_pow_h;
+static bool menu_hdr_ready;
+static bool menu_visible;
+static bool menu_has_frame;
+
 static bool pvr_ready;
 
 static unsigned pvr_pow2(unsigned value)
@@ -236,6 +247,65 @@ static void pvr_draw_notify(void)
    pvr_list_finish();
 }
 
+static void pvr_prepare_menu_hdr(void)
+{
+   pvr_poly_cxt_t cxt;
+
+   if (menu_hdr_ready && menu_texture)
+      return;
+
+   pvr_poly_cxt_txr(&cxt, PVR_LIST_TR_POLY, DC_PVR_TEX_FMT,
+         menu_tex_pow_w, menu_tex_pow_h, menu_texture, PVR_FILTER_NONE);
+   cxt.gen.alpha = PVR_ALPHA_ENABLE;
+   cxt.blend.src = PVR_BLEND_SRCALPHA;
+   cxt.blend.dst = PVR_BLEND_INVSRCALPHA;
+   cxt.txr.alpha = PVR_TXRALPHA_ENABLE;
+   pvr_poly_compile(&menu_hdr, &cxt);
+   menu_hdr_ready = true;
+}
+
+static bool pvr_ensure_menu_texture(unsigned width, unsigned height)
+{
+   size_t bytes;
+
+   if (!width || !height)
+      return false;
+
+   if (menu_texture && menu_tex_w == width && menu_tex_h == height)
+      return true;
+
+   pvr_free_menu_texture();
+
+   menu_tex_w     = width;
+   menu_tex_h     = height;
+   menu_tex_pow_w = pvr_pow2(width);
+   menu_tex_pow_h = pvr_pow2(height);
+   bytes          = (size_t)width * height * sizeof(uint16_t);
+
+   menu_texture = pvr_mem_malloc(bytes);
+   menu_staging = (uint16_t *)memalign(32, bytes);
+
+   return menu_texture && menu_staging;
+}
+
+static void pvr_draw_menu(void)
+{
+   size_t bytes;
+
+   if (!menu_visible || !menu_has_frame || !menu_texture || !menu_staging)
+      return;
+
+   bytes = (size_t)menu_tex_w * menu_tex_h * sizeof(uint16_t);
+   pvr_upload_texture(menu_staging, menu_texture, bytes, menu_tex_w);
+   pvr_prepare_menu_hdr();
+
+   pvr_list_begin(PVR_LIST_TR_POLY);
+   pvr_draw_textured_quad(&menu_hdr, menu_tex_w, menu_tex_h,
+         menu_tex_pow_w, menu_tex_pow_h,
+         0.0f, 0.0f, (float)dc_video_width(), (float)dc_video_height(), true);
+   pvr_list_finish();
+}
+
 static void pvr_compile_hdr(unsigned idx)
 {
    pvr_poly_cxt_t cxt;
@@ -258,6 +328,25 @@ static void pvr_free_ui_texture(void)
    ui_tex_pow_w = 0;
    ui_tex_pow_h = 0;
    ui_hdr_ready = false;
+}
+
+static void pvr_free_menu_texture(void)
+{
+   free(menu_staging);
+   menu_staging = NULL;
+
+   if (menu_texture)
+   {
+      pvr_mem_free(menu_texture);
+      menu_texture = NULL;
+   }
+
+   menu_tex_w = 0;
+   menu_tex_h = 0;
+   menu_tex_pow_w = 0;
+   menu_tex_pow_h = 0;
+   menu_hdr_ready = false;
+   menu_has_frame = false;
 }
 
 static void pvr_free_buffers(void)
@@ -286,6 +375,8 @@ static void pvr_free_buffers(void)
    }
 
    pvr_free_ui_texture();
+   pvr_free_menu_texture();
+   menu_visible = false;
 
    notify_hdr_ready = false;
    pvr_front_idx = 0;
@@ -396,7 +487,7 @@ void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
 
    if (!src)
    {
-      if (!pvr_has_frame)
+      if (!pvr_has_frame && !(menu_visible && menu_has_frame) && !dc_notify_active())
          return;
    }
    else
@@ -418,11 +509,16 @@ void dc_pvr_present(const uint16_t *src, unsigned src_w, unsigned src_h,
    scale = pvr_clamp_scale(scale ? scale : 1, DC_PVR_TEX_W, DC_PVR_TEX_H);
 
    pvr_scene_begin();
-   pvr_list_begin(PVR_LIST_OP_POLY);
-   pvr_draw_scaled_quad(&pvr_hdr[pvr_front_idx], DC_PVR_TEX_W, DC_PVR_TEX_H,
-         DC_PVR_TEX_POW_W, DC_PVR_TEX_POW_H, scale, true);
-   pvr_list_finish();
 
+   if (pvr_has_frame)
+   {
+      pvr_list_begin(PVR_LIST_OP_POLY);
+      pvr_draw_scaled_quad(&pvr_hdr[pvr_front_idx], DC_PVR_TEX_W, DC_PVR_TEX_H,
+            DC_PVR_TEX_POW_W, DC_PVR_TEX_POW_H, scale, true);
+      pvr_list_finish();
+   }
+
+   pvr_draw_menu();
    pvr_draw_notify();
    pvr_scene_finish();
 
@@ -454,4 +550,35 @@ void dc_pvr_present_ui(const uint16_t *src, unsigned width, unsigned height,
 
    if (vsync)
       vid_waitvbl();
+}
+
+void dc_pvr_menu_set_visible(bool visible)
+{
+   menu_visible = visible;
+
+   if (!visible)
+      menu_has_frame = false;
+}
+
+void dc_pvr_menu_set_frame(const uint16_t *src, unsigned width, unsigned height)
+{
+   unsigned y;
+
+   if (!src || !width || !height)
+   {
+      menu_has_frame = false;
+      return;
+   }
+
+   if (!pvr_ensure_menu_texture(width, height))
+   {
+      menu_has_frame = false;
+      return;
+   }
+
+   for (y = 0; y < height; y++)
+      memcpy(menu_staging + y * width, src + y * width,
+            (size_t)width * sizeof(uint16_t));
+
+   menu_has_frame = true;
 }

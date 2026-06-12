@@ -127,7 +127,7 @@ Launcher and RetroArch pass `NULL` to `video_refresh` / `dc_gfx_frame` on frame 
 - Menus draw with `bfont` into a linear RGB555 buffer (`dc_ui_begin_frame` / `dc_ui_draw_text`).
 - `dc_ui_present` uploads the full screen and draws a 1:1 PVR quad when `renderer=pvr`.
 - `dc_video_menu_begin/end` use a depth counter; PVR is no longer torn down for menus.
-- RetroArch RGUI still uses the software blitter overlay path until wired to `dc_ui`.
+- RetroArch RGUI uses the video poke interface (`set_texture_frame` / `set_texture_enable`) to composite a translucent PVR menu overlay in `dc_gfx.c`.
 
 VMU preview remains on Maple LCD (`vmufb`); load-from-VMU skips the 512-byte `/vmu/` file header when present.
 

@@ -53,7 +53,7 @@ Without a ROM argument, the launcher shows a main menu (Load Game / Settings / E
 
 | Path | Purpose |
 |------|---------|
-| `overlay/gfx/drivers/dc_gfx.c` | RGB555 VRAM blit video driver |
+| `overlay/gfx/drivers/dc_gfx.c` | Video driver (software blit or PVR + RGUI overlay) |
 | `overlay/audio/drivers/dc_audio.c` | RetroArch wrapper around shared `dreamcast/dc_audio.c` |
 | `dreamcast/dc_video.c` | Shared VGA/TV mode selection and blitter (copied at build time) |
 | `dreamcast/dc_vmu.c` | VMU LCD status and optional flash mirroring (launcher) |
