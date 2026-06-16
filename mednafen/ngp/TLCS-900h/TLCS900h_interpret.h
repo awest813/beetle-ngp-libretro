@@ -70,7 +70,19 @@ extern bool brCode;
 
 //=============================================================================
 
-#define FETCH8		loadB(pc++)
+static INLINE uint8 fetch8_fast(void)
+{
+	uint8_t val;
+	uint32_t addr;
+	uint8_t *page;
+
+	addr = pc++;
+	page = FastReadMap[addr >> 16];
+	if (page)
+		return page[addr];
+	return loadB(addr);
+}
+#define FETCH8	fetch8_fast()
 
 uint16 fetch16(void);
 uint32 fetch24(void);

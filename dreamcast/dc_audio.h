@@ -37,4 +37,6 @@ void dc_audio_pause(dc_audio_stream_t *stream);
 void dc_audio_resume(dc_audio_stream_t *stream);
 void dc_audio_flush(dc_audio_stream_t *stream);
 
+unsigned dc_audio_underruns(dc_audio_stream_t *stream);
+
 #endif

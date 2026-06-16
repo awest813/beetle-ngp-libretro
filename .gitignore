@@ -4,5 +4,14 @@
 *.dll
 *.dylib
 *.elf
+*.cdi
+*.iso
+*.bin
 /old
+
+# Dreamcast build artifacts
+dreamcast/cd_root/
+dreamcast/IP.BIN
+dreamcast/1ST_READ.BIN
+dreamcast/beetlengp.bin
 

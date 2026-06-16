@@ -26,16 +26,23 @@ SOURCES_C += \
 	$(CORE_EMU_DIR)/mem.c \
 	$(CORE_EMU_DIR)/rom.c \
 	$(CORE_EMU_DIR)/system.c \
-	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret.c \
-	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_dst.c \
-	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_reg.c \
-	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_single.c \
-	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_src.c \
 	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_registers.c \
 	$(MEDNAFEN_DIR)/hw_cpu/z80-fuse/z80_ops.c \
 	$(MEDNAFEN_DIR)/hw_cpu/z80-fuse/z80.c \
 	$(CORE_EMU_DIR)/rtc.c \
 	$(CORE_EMU_DIR)/Z80_interface.c
+
+# Use computed-goto threaded interpreter when available (SH4/Dreamcast etc.)
+ifneq ($(USE_COMPUTED_GOTO),)
+SOURCES_C += $(CORE_EMU_DIR)/TLCS-900h/TLCS900h_threaded.c
+else
+SOURCES_C += \
+	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret.c \
+	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_dst.c \
+	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_reg.c \
+	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_single.c \
+	$(CORE_EMU_DIR)/TLCS-900h/TLCS900h_interpret_src.c
+endif
 
 endif
 
@@ -69,6 +76,10 @@ endif
 
 ifeq ($(NO_COMPUTED_GOTO), 1)
 FLAGS += -DNO_COMPUTED_GOTO
+endif
+
+ifneq ($(USE_COMPUTED_GOTO),)
+FLAGS += -DTHREADED_INTERPRETER
 endif
 
 ifeq ($(FRONTEND_SUPPORTS_RGB565), 1)

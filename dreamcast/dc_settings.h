@@ -11,6 +11,8 @@
 #define DC_SETTINGS_SCALE_MAX      4
 #define DC_SETTINGS_VIDEO_DEFAULT     0
 #define DC_SETTINGS_RENDERER_DEFAULT  0
+#define DC_SETTINGS_FRAMESKIP_DEFAULT 0
+#define DC_SETTINGS_FRAMESKIP_MAX     3
 
 typedef struct dc_settings
 {
@@ -23,6 +25,7 @@ typedef struct dc_settings
    bool auto_load_state;
    bool vmu_lcd;
    bool vmu_save_sync;
+   uint8_t frame_skip;
    char save_dir[64];
    char system_dir[64];
    char last_rom[256];

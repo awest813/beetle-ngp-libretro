@@ -645,6 +645,7 @@ uint8 get_RR_Target(void)
 
 //=========================================================================
 
+#ifndef THREADED_INTERPRETER
 static void ExXWA(void)		{mem = regL(0);}
 static void ExXBC(void)		{mem = regL(1);}
 static void ExXDE(void)		{mem = regL(2);}
@@ -764,9 +765,11 @@ static void ExRC(void)
 	rCode = FETCH8;
 	cycles_extra = 1;
 }
+#endif /* !THREADED_INTERPRETER */
 
 //=========================================================================
 
+#ifndef THREADED_INTERPRETER
 //Address Mode & Register Code
 static void (*decodeExtra[256])(void) = 
 {
@@ -918,6 +921,7 @@ static void (*regDecode[256])() =
 
 //=========================================================================
 
+#ifndef THREADED_INTERPRETER
 static void src_B(void)
 {
 	second = FETCH8;			//Get the second opcode
@@ -1001,9 +1005,11 @@ static void reg_L(void)
 
 	(*regDecode[second])();		//Call
 }
+#endif /* !THREADED_INTERPRETER */
 
 //=============================================================================
 
+#ifndef THREADED_INTERPRETER
 //Primary Instruction decode
 static void (*decode[256])(void) = 
 {
@@ -1040,9 +1046,11 @@ static void (*decode[256])(void) =
 /*F*/	dst,		dst,		dst,		dst,		dst,		dst,		e,			sngLDX,
 		sngSWI,		sngSWI,		sngSWI,		sngSWI,		sngSWI,		sngSWI,		sngSWI,		sngSWI
 };
+#endif /* !THREADED_INTERPRETER */
 
 //=============================================================================
 
+#ifndef THREADED_INTERPRETER
 int32 TLCS900h_interpret(void)
 {
 	brCode = false;
@@ -1056,3 +1064,7 @@ int32 TLCS900h_interpret(void)
 
 	return cycles + cycles_extra;
 }
+#else
+/* When THREADED_INTERPRETER is defined, decodeExtra and decode tables are
+ * not needed — computed-goto replaces them in TLCS900h_threaded.c */
+#endif

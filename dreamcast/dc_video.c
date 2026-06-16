@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <dc/sq.h>
+
 static dc_video_output_t active_output = DC_VIDEO_OUTPUT_AUTO;
 static dc_video_renderer_t active_renderer = DC_VIDEO_RENDERER_SOFTWARE;
 static unsigned active_scale = 3;
@@ -222,7 +224,9 @@ void dc_video_present(const uint16_t *pixels, bool vsync)
    if (vsync)
       vid_waitvbl();
 
-   memcpy(vram_s, pixels, bytes);
+   /* Use SH-4 store queues for bulk VRAM write — bypasses L1 cache,
+    * avoiding cache pollution from the ~600KB framebuffer copy. */
+   sq_cpy(vram_s, pixels, (int)bytes);
 }
 
 static unsigned clamp_scale(unsigned scale, unsigned src_w, unsigned src_h,

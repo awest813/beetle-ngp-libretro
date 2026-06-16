@@ -7,6 +7,7 @@
 
 #define DC_AUDIO_RING_SAMPLES 16384
 #define DC_AUDIO_OUT_BYTES    (SND_STREAM_BUFFER_MAX * 2)
+#define DC_AUDIO_UNDERRUN_MARGIN 512
 
 struct dc_audio_stream
 {
@@ -19,6 +20,9 @@ struct dc_audio_stream
    uint8_t volume;
    bool enabled;
    bool started;
+   unsigned underrun_count;
+   int16_t last_left;
+   int16_t last_right;
 };
 
 static int16_t dc_audio_apply_volume(int16_t sample, uint8_t volume)
@@ -72,8 +76,11 @@ static void *dc_audio_stream_callback(snd_stream_hnd_t hnd, int req_bytes,
    {
       if (stream->read_pos == stream->write_pos)
       {
-         dst[i * 2]     = 0;
-         dst[i * 2 + 1] = 0;
+         /* Underrun: repeat last known sample instead of silence.
+          * This produces a less jarring artifact than a hard zero. */
+         dst[i * 2]     = dc_audio_apply_volume(stream->last_left, stream->volume);
+         dst[i * 2 + 1] = dc_audio_apply_volume(stream->last_right, stream->volume);
+         stream->underrun_count++;
          continue;
       }
 
@@ -99,11 +106,21 @@ static size_t dc_audio_queue(dc_audio_stream_t *stream,
       uint32_t next = (stream->write_pos + 2) % (DC_AUDIO_RING_SAMPLES * 2);
 
       if (next == stream->read_pos)
+      {
+         /* Ring full — CPU can't keep up. Drop sample but save for underrun fallback. */
+         stream->last_left  = src[queued * 2];
+         stream->last_right = src[queued * 2 + 1];
+         stream->underrun_count++;
          break;
+      }
 
       stream->ring[stream->write_pos++] = src[queued * 2];
       stream->ring[stream->write_pos++] = src[queued * 2 + 1];
       stream->write_pos %= (DC_AUDIO_RING_SAMPLES * 2);
+
+      /* Track last sample for underrun soft-fill */
+      stream->last_left  = src[queued * 2];
+      stream->last_right = src[queued * 2 + 1];
    }
 
    return queued;
@@ -136,6 +153,9 @@ dc_audio_stream_t *dc_audio_create(unsigned rate)
    stream->volume  = 255;
    stream->enabled = true;
    stream->started = false;
+   stream->underrun_count = 0;
+   stream->last_left  = 0;
+   stream->last_right = 0;
 
    return stream;
 }
@@ -301,4 +321,12 @@ void dc_audio_resume(dc_audio_stream_t *stream)
       return;
 
    dc_audio_start(stream, stream->rate);
+}
+
+unsigned dc_audio_underruns(dc_audio_stream_t *stream)
+{
+   if (!stream)
+      return 0;
+
+   return stream->underrun_count;
 }

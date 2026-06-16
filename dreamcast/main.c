@@ -27,13 +27,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define FB_WIDTH  160
 #define FB_HEIGHT 152
+#define FB_PITCH  (FB_WIDTH * 2)
+#define SHOT_DIR  "/sd/ngp/screenshots"
 
 static dc_video_blitter_t *blitter;
 static unsigned video_scale;
 static bool vsync_enabled = true;
+static unsigned frame_counter;
+static bool skip_this_frame;
+static uint16_t last_frame[FB_WIDTH * FB_HEIGHT];
+static unsigned shot_counter;
 
 static dc_input_t player_input;
 static dc_audio_stream_t *audio_stream;
@@ -104,10 +111,24 @@ static void apply_video_settings(void)
 
 static void video_refresh(const void *data, unsigned width, unsigned height, size_t pitch)
 {
+   const uint8_t *src8 = (const uint8_t *)data;
+
    if (!blitter)
       return;
 
    if (width != FB_WIDTH || height != FB_HEIGHT)
+      return;
+
+   /* Capture last frame for screenshots (before skip check) */
+   if (data && !skip_this_frame)
+   {
+      unsigned y;
+      for (y = 0; y < FB_HEIGHT; y++)
+         memcpy(&last_frame[y * FB_WIDTH],
+               src8 + y * pitch, FB_PITCH);
+   }
+
+   if (skip_this_frame)
       return;
 
    if (dc_video_get_renderer() == DC_VIDEO_RENDERER_PVR)
@@ -135,6 +156,9 @@ static void audio_sample(int16_t left, int16_t right)
    if (!audio_stream)
       return;
 
+   if (skip_this_frame)
+      return;
+
    frame[0] = left;
    frame[1] = right;
    dc_audio_write(audio_stream, frame, 1, false);
@@ -144,6 +168,9 @@ static size_t audio_sample_batch(const int16_t *data, size_t frames)
 {
    if (!audio_stream)
       return 0;
+
+   if (skip_this_frame)
+      return frames;
 
    return dc_audio_write(audio_stream, data, frames, false);
 }
@@ -294,6 +321,53 @@ static void save_battery_with_notify(void)
       dc_notify_show("Battery save failed", 90);
 }
 
+static void take_screenshot(void)
+{
+   char path[280];
+   char name[128];
+   FILE *file;
+   unsigned x, y;
+
+   if (!loaded_rom_path)
+      return;
+
+   /* Ensure screenshot directory exists */
+   mkdir(SHOT_DIR, 0755);
+
+   dc_saves_basename(loaded_rom_path, name, sizeof(name));
+   snprintf(path, sizeof(path), "%s/%s_%04u.ppm",
+         SHOT_DIR, name, shot_counter++);
+
+   file = fopen(path, "wb");
+   if (!file)
+   {
+      dc_notify_show("Screenshot: fopen failed", 90);
+      return;
+   }
+
+   /* PPM P6 binary format: header + RGB888 data */
+   fprintf(file, "P6\n%u %u\n255\n", FB_WIDTH, FB_HEIGHT);
+
+   for (y = 0; y < FB_HEIGHT; y++)
+   {
+      for (x = 0; x < FB_WIDTH; x++)
+      {
+         uint16_t px = last_frame[y * FB_WIDTH + x];
+         uint8_t rgb[3];
+
+         /* ARGB1555 → RGB888 */
+         rgb[0] = (uint8_t)(((px >> 10) & 0x1F) * 255 / 31);
+         rgb[1] = (uint8_t)(((px >> 5)  & 0x1F) * 255 / 31);
+         rgb[2] = (uint8_t)(( px        & 0x1F) * 255 / 31);
+
+         fwrite(rgb, 3, 1, file);
+      }
+   }
+
+   fclose(file);
+   dc_notify_show("Screenshot saved", 90);
+}
+
 static hotkey_action_t handle_hotkeys(uint32_t buttons)
 {
    uint32_t pressed;
@@ -345,6 +419,9 @@ static hotkey_action_t handle_hotkeys(uint32_t buttons)
 
    if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_B))
       return HOTKEY_QUIT;
+
+   if ((buttons & DC_TRIGGER_HOTKEY_MASK) && (pressed & CONT_DPAD_DOWN))
+      take_screenshot();
 
    return HOTKEY_NONE;
 }
@@ -470,10 +547,16 @@ int main(int argc, char **argv)
    }
 
    previous_buttons = 0;
+   frame_counter     = 0;
 
    for (;;)
    {
       uint32_t buttons;
+      unsigned fskip = dc_settings_get()->frame_skip;
+
+      /* Frame skip: run CPU every frame, drop video+audio on skip frames.
+       * frame_skip=0 -> every frame rendered; =1 -> every other; =2 -> 1 of 3 */
+      skip_this_frame = (fskip > 0) && ((frame_counter % (fskip + 1)) != 0);
 
       dc_input_poll(&player_input);
       buttons = dc_input_maple_buttons(&player_input);
@@ -548,6 +631,7 @@ int main(int argc, char **argv)
          dc_audio_poll(audio_stream);
 
       retro_run();
+      frame_counter++;
       dc_notify_tick();
       dc_vmu_on_frame();
    }

@@ -18,7 +18,7 @@
 
 #define MAX_ROM_ENTRIES 64
 #define ROM_NAME_LEN    48
-#define SETTINGS_COUNT  10
+#define SETTINGS_COUNT  11
 #define SPLASH_FRAMES   90
 
 typedef struct
@@ -576,6 +576,7 @@ static const char *setting_hints[SETTINGS_COUNT] = {
    "Show game preview on VMU LCD",
    "Mirror battery saves to VMU",
    "Where .state and .flash files go",
+   "Frames to skip (0=none, 1-3)",
 };
 
 static void format_setting_value(int index, const dc_settings_t *settings,
@@ -616,6 +617,9 @@ static void format_setting_value(int index, const dc_settings_t *settings,
       case 9:
          snprintf(value, value_len, "%s", settings->save_dir);
          break;
+      case 10:
+         snprintf(value, value_len, "%u", settings->frame_skip);
+         break;
       default:
          value[0] = '\0';
          break;
@@ -636,6 +640,7 @@ static void draw_settings_menu(dc_ui_list_t *list, const dc_settings_t *settings
       "VMU LCD",
       "VMU save sync",
       "Save directory",
+      "Frame skip",
    };
    dc_ui_layout_t layout;
    dc_ui_list_t draw_list;
@@ -809,6 +814,17 @@ void menu_settings_for_rom(const char *rom_path)
             }
             settings->save_dir[sizeof(settings->save_dir) - 1]     = '\0';
             settings->system_dir[sizeof(settings->system_dir) - 1] = '\0';
+            dirty = true;
+         }
+         else if (list.selected == 10)
+         {
+            int fs = (int)settings->frame_skip + delta;
+
+            if (fs < 0)
+               fs = DC_SETTINGS_FRAMESKIP_MAX;
+            if (fs > DC_SETTINGS_FRAMESKIP_MAX)
+               fs = 0;
+            settings->frame_skip = (uint8_t)fs;
             dirty = true;
          }
       }

@@ -102,12 +102,14 @@ void changedSP(void);
 #define FLAG_N ((sr & 0x0002) >> 1)
 #define FLAG_C (sr & 1)
 
-#define SETFLAG_S(s) { uint16 sr1 = sr & 0xFF7F; if (s) sr1 |= 0x0080; sr = sr1; }
-#define SETFLAG_Z(z) { uint16 sr1 = sr & 0xFFBF; if (z) sr1 |= 0x0040; sr = sr1; }
-#define SETFLAG_H(h) { uint16 sr1 = sr & 0xFFEF; if (h) sr1 |= 0x0010; sr = sr1; }
-#define SETFLAG_V(v) { uint16 sr1 = sr & 0xFFFB; if (v) sr1 |= 0x0004; sr = sr1; }
-#define SETFLAG_N(n) { uint16 sr1 = sr & 0xFFFD; if (n) sr1 |= 0x0002; sr = sr1; }
-#define SETFLAG_C(c) { uint16 sr1 = sr & 0xFFFE; if (c) sr1 |= 0x0001; sr = sr1; }
+/* Branchless flag set: -(!!(cond)) produces 0xFFFF or 0, mask isolates the bit.
+ * On SH-4 this compiles to tst/movt/neg/and/or — no pipeline flush. */
+#define SETFLAG_S(s) sr = (sr & 0xFF7F) | ((-(uint16)!!(s)) & 0x0080)
+#define SETFLAG_Z(z) sr = (sr & 0xFFBF) | ((-(uint16)!!(z)) & 0x0040)
+#define SETFLAG_H(h) sr = (sr & 0xFFEF) | ((-(uint16)!!(h)) & 0x0010)
+#define SETFLAG_V(v) sr = (sr & 0xFFFB) | ((-(uint16)!!(v)) & 0x0004)
+#define SETFLAG_N(n) sr = (sr & 0xFFFD) | ((-(uint16)!!(n)) & 0x0002)
+#define SETFLAG_C(c) sr = (sr & 0xFFFE) | ((-(uint16)!!(c)) & 0x0001)
 
 #define SETFLAG_S0		{ sr &= 0xFF7F;	}
 #define SETFLAG_Z0		{ sr &= 0xFFBF;	}

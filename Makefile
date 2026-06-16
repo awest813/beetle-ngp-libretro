@@ -327,8 +327,9 @@ else ifeq ($(platform), dreamcast)
    STATIC_LINKING = 1
    FORCE_VFS = 1
    LOAD_FROM_MEMORY = 1
+   USE_COMPUTED_GOTO = 1
    override FRONTEND_SUPPORTS_RGB565 := 0
-   ENDIANNESS_DEFINES := -DLSB_FIRST
+   ENDIANNESS_DEFINES := -DLSB_FIRST -DNGP_Z80
    FLAGS += -D__DREAMCAST__ -D__SH4__
    FLAGS += -fno-exceptions -fno-rtti -fno-threadsafe-statics
    FLAGS += -ffast-math -fomit-frame-pointer
