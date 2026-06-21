@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static void make_basename(const char *rom_path, char *out, size_t out_len)
 {
@@ -45,7 +46,6 @@ static bool write_file_atomic(const char *path, const void *data, size_t size)
       return false;
    }
 
-   fflush(file);
    fclose(file);
    remove(path);
 
@@ -91,35 +91,23 @@ void dc_saves_flash_path(const char *rom_path, char *out, size_t out_len)
 bool dc_saves_state_exists(const char *rom_path)
 {
    char path[256];
-   FILE *file;
 
    if (!rom_path)
       return false;
 
    dc_saves_state_path(rom_path, path, sizeof(path));
-   file = fopen(path, "rb");
-   if (!file)
-      return false;
-
-   fclose(file);
-   return true;
+   return access(path, R_OK) == 0;
 }
 
 bool dc_saves_flash_exists(const char *rom_path)
 {
    char path[256];
-   FILE *file;
 
    if (!rom_path)
       return false;
 
    dc_saves_flash_path(rom_path, path, sizeof(path));
-   file = fopen(path, "rb");
-   if (!file)
-      return false;
-
-   fclose(file);
-   return true;
+   return access(path, R_OK) == 0;
 }
 
 bool dc_saves_save_state(const char *rom_path)

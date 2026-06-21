@@ -327,22 +327,19 @@ bool dc_video_blitter_sync(dc_video_blitter_t *blitter, unsigned scale)
 
    if (w != blitter->buf_w || h != blitter->buf_h)
    {
-      uint16_t *old_buffer = blitter->buffer;
-      uint16_t *old_scratch = blitter->row_scratch;
-
       buffer = (uint16_t *)realloc(blitter->buffer,
             (size_t)w * h * sizeof(uint16_t));
       if (!buffer)
          return false;
 
+      /* Update blitter->buffer immediately: realloc may have freed the
+       * old block, leaving blitter->buffer dangling until we overwrite. */
+      blitter->buffer = buffer;
+
       scratch = (uint16_t *)realloc(blitter->row_scratch, w * sizeof(uint16_t));
       if (!scratch)
-      {
-         free(buffer);
          return false;
-      }
 
-      blitter->buffer      = buffer;
       blitter->row_scratch = scratch;
       blitter->buf_w       = w;
       blitter->buf_h       = h;

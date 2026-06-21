@@ -78,10 +78,10 @@ void dc_notify_draw(void)
 
    for (unsigned row = 0; row < bar_h; row++)
    {
-      uint16_t *dst = vram_s + (y + (int)row) * width + x - 4;
+      uint16_t *dst = vram_s + (y + (int)row) * width;
       int xx;
 
-      for (xx = 0; xx < (int)width - 16; xx++)
+      for (xx = 0; xx < (int)width; xx++)
          dst[xx] = DC_UI_COLOR_ACCENT;
    }
 
