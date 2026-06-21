@@ -249,12 +249,20 @@ size_t dc_audio_write(dc_audio_stream_t *stream,
 
    if (!nonblock)
    {
+      unsigned timeout_ms = 5000;
+      unsigned waited = 0;
+
       while (queued < frames)
       {
          dc_audio_poll(stream);
          queued += dc_audio_queue(stream, data + queued * 2, frames - queued);
          if (queued < frames)
+         {
             thd_sleep(1);
+            waited++;
+            if (waited >= timeout_ms)
+               break;
+         }
       }
    }
 

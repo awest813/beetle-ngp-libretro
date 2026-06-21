@@ -136,11 +136,12 @@ void do_flash_read(uint8_t *flashdata)
    //Copy blocks using explicit-unlock store to avoid touching the global flag
    for (i = 0; i < block_count; i++)
    {
-      FlashFileBlockHeader* current = (FlashFileBlockHeader*)fileptr;
+      FlashFileBlockHeader current;
+      memcpy(&current, fileptr, sizeof(FlashFileBlockHeader));
       fileptr += sizeof(FlashFileBlockHeader);
 
-      blocks[i].start_address = current->start_address;
-      blocks[i].data_length = current->data_length;
+      blocks[i].start_address = current.start_address;
+      blocks[i].data_length = current.data_length;
 
       //Copy data
       for (j = 0; j < blocks[i].data_length; j++)

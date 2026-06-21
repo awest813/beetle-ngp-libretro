@@ -65,7 +65,6 @@ static char retro_save_directory[1024];
  */
 
 #include "mednafen/ngp/neopop.h"
-#include "mednafen/general.h"
 
 #include "mednafen/ngp/TLCS-900h/TLCS900h_interpret.h"
 #include "mednafen/ngp/TLCS-900h/TLCS900h_registers.h"

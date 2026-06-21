@@ -69,7 +69,7 @@ void iBIOSHLE(void)
          {
             /* Cheap bit of code to stop the message appearing repeatedly. */
             uint32 a = pop32();
-            push32(0xBAADC0DE); /* Sure is! */
+            push32(0xBAADC0DE); /* Sentinel value to mark shutdown handled */
          }
 
          return;	/* Don't pop a return address, stay here */

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 
 static dc_settings_t active_settings;
@@ -55,7 +56,11 @@ void dc_settings_load(dc_settings_t *settings)
          continue;
 
       if (!strcmp(key, "volume"))
-         settings->volume = (uint8_t)strtoul(value, NULL, 10);
+      {
+         unsigned vol = (unsigned)strtoul(value, NULL, 10);
+         if (vol <= 255)
+            settings->volume = (uint8_t)vol;
+      }
       else if (!strcmp(key, "scale"))
       {
          unsigned scale = (unsigned)strtoul(value, NULL, 10);
@@ -144,17 +149,10 @@ dc_settings_t *dc_settings_get(void)
 
 bool dc_settings_last_rom_valid(const dc_settings_t *settings)
 {
-   FILE *file;
-
    if (!settings || !settings->last_rom[0])
       return false;
 
-   file = fopen(settings->last_rom, "rb");
-   if (!file)
-      return false;
-
-   fclose(file);
-   return true;
+   return access(settings->last_rom, R_OK) == 0;
 }
 
 void dc_settings_set_last_rom(dc_settings_t *settings, const char *path)

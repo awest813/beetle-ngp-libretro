@@ -651,6 +651,7 @@ int main(int argc, char **argv)
    retro_deinit();
    free(rom_data);
    free(menu_path);
+   loaded_rom_path = NULL;
    dc_vmu_shutdown();
    dc_ui_shutdown();
    dc_video_blitter_destroy(blitter);

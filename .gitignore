@@ -7,6 +7,10 @@
 *.cdi
 *.iso
 *.bin
+*.exe
+*.lib
+*.exp
+*.obj
 /old
 
 # Dreamcast build artifacts
@@ -16,4 +20,11 @@ dreamcast/1ST_READ.BIN
 dreamcast/beetlengp.bin
 
 # IDE / editor
-.vscode/pro-deployer.json
+.vscode/
+.idea/
+*.swp
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db
