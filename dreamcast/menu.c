@@ -16,10 +16,12 @@
 #include <string.h>
 #include <strings.h>
 
-#define MAX_ROM_ENTRIES 64
+#define MAX_ROM_ENTRIES 128
 #define ROM_NAME_LEN    48
 #define SETTINGS_COUNT  11
 #define SPLASH_FRAMES   90
+
+static bool rom_overflow;
 
 typedef struct
 {
@@ -154,10 +156,12 @@ static int build_main_items(main_item_t *items, int max_items)
 
    if (dc_settings_last_rom_valid(cfg))
    {
+      char display[ROM_NAME_LEN];
+      strip_extension(display, sizeof(display), basename_only(cfg->last_rom));
       items[count].id = MAIN_ITEM_CONTINUE;
       items[count].label = "Continue";
       truncate_middle(items[count].value, sizeof(items[count].value),
-            basename_only(cfg->last_rom), 22);
+            display, 26);
       count++;
    }
 
@@ -278,17 +282,64 @@ static bool has_rom_extension(const char *name)
        || !strcasecmp(dot, ".npc");
 }
 
+/* Strip file extension from name in-place (write to out buffer). */
+static void strip_extension(char *out, size_t out_len, const char *name)
+{
+   const char *dot;
+   size_t len;
+
+   dot = strrchr(name, '.');
+   len = dot ? (size_t)(dot - name) : strlen(name);
+
+   if (len >= out_len)
+      len = out_len - 1;
+
+   memcpy(out, name, len);
+   out[len] = '\0';
+}
+
+/* Check if a ROM with the same basename already exists. */
+static bool rom_exists(const char *name)
+{
+   int i;
+
+   for (i = 0; i < rom_count; i++)
+   {
+      if (!strcasecmp(roms[i].name, name))
+         return true;
+   }
+   return false;
+}
+
 static void add_rom(const char *dir, const char *name)
 {
    rom_entry_t *entry;
+   char display[ROM_NAME_LEN];
 
    if (rom_count >= MAX_ROM_ENTRIES)
+   {
+      rom_overflow = true;
+      return;
+   }
+
+   /* Strip extension for display name */
+   strip_extension(display, sizeof(display), name);
+
+   /* Deduplicate by display name (first match wins — primary directory) */
+   if (rom_exists(display))
       return;
 
-   entry = &roms[rom_count++];
-   snprintf(entry->path, sizeof(entry->path), "%s/%s", dir, name);
-   strncpy(entry->name, name, sizeof(entry->name) - 1);
+   entry = &roms[rom_count];
+
+   /* Build full path safely */
+   if (snprintf(entry->path, sizeof(entry->path), "%s/%s", dir, name)
+         >= (int)sizeof(entry->path))
+      return; /* path truncated — skip this entry */
+
+   strncpy(entry->name, display, sizeof(entry->name) - 1);
    entry->name[sizeof(entry->name) - 1] = '\0';
+
+   rom_count++;
 }
 
 static void scan_directory(const char *dir)
@@ -326,7 +377,8 @@ static void collect_roms(void)
 {
    size_t i;
 
-   rom_count = 0;
+   rom_count   = 0;
+   rom_overflow = false;
 
    for (i = 0; i < sizeof(scan_dirs) / sizeof(scan_dirs[0]); i++)
       scan_directory(scan_dirs[i]);
@@ -338,13 +390,23 @@ static void collect_roms(void)
 static int find_rom_index(const char *path)
 {
    int i;
+   char want_name[ROM_NAME_LEN];
 
    if (!path)
       return 0;
 
+   /* First try exact path match */
    for (i = 0; i < rom_count; i++)
    {
       if (!strcmp(roms[i].path, path))
+         return i;
+   }
+
+   /* Fall back to basename match (ROM may have moved between dirs) */
+   strip_extension(want_name, sizeof(want_name), basename_only(path));
+   for (i = 0; i < rom_count; i++)
+   {
+      if (!strcasecmp(roms[i].name, want_name))
          return i;
    }
 
@@ -503,7 +565,10 @@ static void draw_rom_menu(dc_ui_list_t *list)
    visible = dc_ui_list_visible_rows(list);
    row_w   = (int)layout.width - layout.margin_x * 2 - 12;
 
-   snprintf(subtitle, sizeof(subtitle), "%d ROM(s)", rom_count);
+   if (rom_overflow)
+      snprintf(subtitle, sizeof(subtitle), "%d+ ROM(s) (list full)", rom_count);
+   else
+      snprintf(subtitle, sizeof(subtitle), "%d ROM(s)", rom_count);
 
    menu_frame_begin("Select ROM", subtitle);
 
@@ -512,7 +577,7 @@ static void draw_rom_menu(dc_ui_list_t *list)
       dc_ui_draw_text(layout.margin_x, list->content_y, DC_UI_COLOR_TEXT,
             "No ROMs found");
       dc_ui_draw_text(layout.margin_x, list->content_y + 18, DC_UI_COLOR_TEXT,
-            "Copy .ngp / .ngc files to:");
+            "Copy .ngp/.ngc files to:");
       dc_ui_draw_text(layout.margin_x + 8, list->content_y + 36,
             DC_UI_COLOR_TEXT, "/sd/ngp");
       dc_ui_draw_text(layout.margin_x + 8, list->content_y + 52,
@@ -607,7 +672,7 @@ static const char *setting_hints[SETTINGS_COUNT] = {
    "Load .state file when game starts",
    "Show game preview on VMU LCD",
    "Mirror battery saves to VMU",
-   "Where .state and .flash files go",
+   "Save directory for .state and .flash files",
    "Frames to skip (0=none, 1-3)",
 };
 
@@ -835,18 +900,38 @@ void menu_settings_for_rom(const char *rom_path)
          }
          else if (list.selected == 9)
          {
-            if (delta > 0)
+            /* Cycle through save directories:
+             * 0=/sd/ngp  1=/sd/roms/ngp  2=/ide/ngp  3=/ide/roms/ngp */
+            static const struct { const char *save; const char *sys; } dirs[] = {
+               { "/sd/ngp",       "/sd" },
+               { "/sd/roms/ngp",  "/sd" },
+               { "/ide/ngp",      "/ide" },
+               { "/ide/roms/ngp", "/ide" },
+            };
+            int cur = 0;
+            int next;
+            size_t d;
+
+            /* Find current index */
+            for (d = 0; d < sizeof(dirs) / sizeof(dirs[0]); d++)
             {
-               strncpy(settings->save_dir, "/sd/ngp", sizeof(settings->save_dir) - 1);
-               strncpy(settings->system_dir, "/sd", sizeof(settings->system_dir) - 1);
+               if (!strcmp(settings->save_dir, dirs[d].save))
+               {
+                  cur = (int)d;
+                  break;
+               }
             }
-            else
-            {
-               strncpy(settings->save_dir, "/ide/ngp", sizeof(settings->save_dir) - 1);
-               strncpy(settings->system_dir, "/ide", sizeof(settings->system_dir) - 1);
-            }
-            settings->save_dir[sizeof(settings->save_dir) - 1]     = '\0';
-            settings->system_dir[sizeof(settings->system_dir) - 1] = '\0';
+
+            next = cur + delta;
+            if (next < 0)
+               next = (int)(sizeof(dirs) / sizeof(dirs[0])) - 1;
+            if (next >= (int)(sizeof(dirs) / sizeof(dirs[0])))
+               next = 0;
+
+            strlcpy(settings->save_dir, dirs[next].save,
+                  sizeof(settings->save_dir));
+            strlcpy(settings->system_dir, dirs[next].sys,
+                  sizeof(settings->system_dir));
             dirty = true;
          }
          else if (list.selected == 10)
