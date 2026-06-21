@@ -52,6 +52,24 @@ struct retro_core_option_v2_definition option_defs_us_v2[] = {
       },
       "english",
    },
+   {
+      "ngp_frameskip",
+      "Frame skip",
+      NULL,
+      "Drop frames to improve performance at the cost of smoothness. 0 = render every frame, 1 = skip 1 of 2, 2 = skip 2 of 3, etc.",
+      NULL,
+      "system",
+      {
+         { "0", NULL },
+         { "1", NULL },
+         { "2", NULL },
+         { "3", NULL },
+         { "4", NULL },
+         { "5", NULL },
+         { NULL, NULL },
+      },
+      "0",
+   },
    { NULL, NULL, NULL, NULL, NULL, NULL, {{0}}, NULL },
 };
 
@@ -71,6 +89,21 @@ struct retro_core_option_definition option_defs_us[] = {
          { NULL, NULL},
       },
       "english",
+   },
+   {
+      "ngp_frameskip",
+      "Frame skip",
+      "Drop frames to improve performance at the cost of smoothness. 0 = render every frame, 1 = skip 1 of 2, etc.",
+      {
+         { "0", NULL },
+         { "1", NULL },
+         { "2", NULL },
+         { "3", NULL },
+         { "4", NULL },
+         { "5", NULL },
+         { NULL, NULL },
+      },
+      "0",
    },
    { NULL, NULL, NULL, { NULL, NULL }, NULL },
 };

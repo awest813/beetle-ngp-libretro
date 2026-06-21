@@ -122,11 +122,11 @@ static void* translate_address_read(uint32 address)
 	return NULL;
 }
 
-static void *translate_address_write(uint32 address)
-{	
+static void *translate_address_write_ex(uint32 address, bool unlock_flash)
+{
    address &= 0xFFFFFF;
 
-   if (memory_unlock_flash_write)
+   if (unlock_flash)
    {
       /* ROM (LOW) */
       if (address >= ROM_START && address <= ROM_END)
@@ -181,6 +181,11 @@ static void *translate_address_write(uint32 address)
    }
 
    return NULL;
+}
+
+static void *translate_address_write(uint32 address)
+{
+   return translate_address_write_ex(address, memory_unlock_flash_write);
 }
 
 /* WARNING:  32-bit loads and stores apparently DON'T have to be 4-byte-aligned(so we must +2 instead of |2). */
@@ -376,7 +381,7 @@ void storeB(uint32 address, uint8_t data)
             Write_SoundChipLeft(data);
          else if (address == 0xA0)
             Write_SoundChipRight(data);
-      } 
+      }
       //DAC Write
       if (address == 0xA2)
          dac_write_left(data);
@@ -390,6 +395,40 @@ void storeB(uint32 address, uint8_t data)
    /* Write */
    if (ptr)
       *ptr = data;
+}
+
+/* storeB_unlock: write byte with ROM-write unlock forced.
+ * Used by the flash loader to restore battery saves without
+ * touching the global memory_unlock_flash_write flag.
+ * Mirrors storeB() but forces the unlock path for ROM writes. */
+void storeB_unlock(uint32 address, uint8_t data)
+{
+   uint8_t* ptr;
+   address &= 0xFFFFFF;
+
+   if(address >= 0x4000 && address <= 0x7fff)
+   {
+      *(uint8_t *)(CPUExRAM + address - 0x4000) = data;
+      return;
+   }
+
+   /* Force unlock path - writes to ROM succeed without flash command sequence */
+   ptr = (uint8_t*)translate_address_write_ex(address, true);
+
+   if (ptr)
+      *ptr = data;
+}
+
+void storeW_unlock(uint32 address, uint16_t data)
+{
+   storeB_unlock(address + 0, data & 0xFF);
+   storeB_unlock(address + 1, data >> 8);
+}
+
+void storeL_unlock(uint32 address, uint32 data)
+{
+   storeW_unlock(address, data & 0xFFFF);
+   storeW_unlock(address + 2, data >> 16);
 }
 
 void storeW(uint32 address, uint16_t data)

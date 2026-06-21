@@ -92,11 +92,15 @@ void flash_optimise_blocks(void)
       if (blocks[i+1].start_address <=
             (blocks[i].start_address + blocks[i].data_length))
       {
-         //Extend the first block
-         blocks[i].data_length = 
-            (uint16_t)((blocks[i+1].start_address + blocks[i+1].data_length) - 
-                  blocks[i].start_address);
-         //FIXME: std::max
+         //Extend the first block to cover both blocks
+         {
+            uint32_t new_end = blocks[i+1].start_address + blocks[i+1].data_length;
+            uint32_t new_len = new_end - blocks[i].start_address;
+            /* Guard against underflow if block addresses are malformed */
+            if (new_len < blocks[i].data_length)
+               new_len = blocks[i].data_length;
+            blocks[i].data_length = (uint16_t)new_len;
+         }
 
          //Remove the next one.
          for (j = i+2; j < block_count; j++)
@@ -119,7 +123,6 @@ void do_flash_read(uint8_t *flashdata)
    uint8_t *fileptr;
    uint16_t i;
    uint32_t j;
-   bool PREV_memory_unlock_flash_write = memory_unlock_flash_write; // kludge, hack, FIXME
 
    memcpy(&header, flashdata, sizeof(header));
 
@@ -127,8 +130,7 @@ void do_flash_read(uint8_t *flashdata)
    block_count = header.block_count;
    fileptr = flashdata + sizeof(FlashFileHeader);
 
-   //Copy blocks
-   memory_unlock_flash_write = 1;
+   //Copy blocks using explicit-unlock store to avoid touching the global flag
    for (i = 0; i < block_count; i++)
    {
       FlashFileBlockHeader* current = (FlashFileBlockHeader*)fileptr;
@@ -140,11 +142,10 @@ void do_flash_read(uint8_t *flashdata)
       //Copy data
       for (j = 0; j < blocks[i].data_length; j++)
       {
-         storeB(blocks[i].start_address + j, *fileptr);
+         storeB_unlock(blocks[i].start_address + j, *fileptr);
          fileptr++;
       }
    }
-   memory_unlock_flash_write = PREV_memory_unlock_flash_write;
 
    flash_optimise_blocks();		//Optimise
 }

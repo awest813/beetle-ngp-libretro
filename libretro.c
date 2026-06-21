@@ -163,6 +163,34 @@ static void extract_basename(char *buf, const char *path, size_t size)
       *ext = '\0';
 }
 
+/* Extract the directory portion of a path into buf.
+ * Handles both '/' and '\\' separators. Trailing separator is kept. */
+static void extract_dirname(char *buf, const char *path, size_t size)
+{
+   const char *sep;
+   size_t len;
+
+   if (!buf || !path || size == 0)
+      return;
+
+   buf[0] = '\0';
+   sep = strrchr(path, '/');
+   {
+      const char *sep2 = strrchr(path, '\\');
+      if (sep2 && (!sep || sep2 > sep))
+         sep = sep2;
+   }
+   if (!sep)
+      return; /* no directory component */
+
+   len = (size_t)(sep - path) + 1; /* include the separator */
+   if (len >= size)
+      len = size - 1;
+
+   memcpy(buf, path, len);
+   buf[len] = '\0';
+}
+
 static struct MDFNFILE *file_open(const char *path)
 {
    int64_t size          = 0;
@@ -229,6 +257,22 @@ static int Load(const char *path,
       persistent_data = false;
       if (rom_path)
          extract_basename(retro_base_name, rom_path, sizeof(retro_base_name));
+   }
+
+   /* Fallback directory resolution:
+    * If the frontend did not provide system/save directories in
+    * retro_init, use the directory of the loaded ROM. This is the
+    * common case for standalone/portable frontends. */
+   if (rom_path && rom_path[0])
+   {
+      char rom_dir[1024];
+      extract_dirname(rom_dir, rom_path, sizeof(rom_dir));
+
+      if (retro_base_directory[0] == '\0')
+         strlcpy(retro_base_directory, rom_dir, sizeof(retro_base_directory));
+
+      if (retro_save_directory[0] == '\0')
+         strlcpy(retro_save_directory, retro_base_directory, sizeof(retro_save_directory));
    }
 
    /* Use existing ROM data if available */
@@ -335,7 +379,9 @@ static bool update_video = false;
 
 #define MEDNAFEN_CORE_NAME_MODULE "ngp"
 #define MEDNAFEN_CORE_NAME "Beetle NeoPop"
-/* TODO/FIXME - only thing missing is flash/RTC refactors */
+/* Note: the NGP RTC is derived from the host system clock on every read
+ * (see rtc.c::update_rtc_latch), so it intentionally has no save-state
+ * representation. Flash save data persists on disk via the host layer. */
 #define MEDNAFEN_CORE_VERSION "v1.29.0.0"
 #define MEDNAFEN_CORE_EXTENSIONS "ngp|ngc|ngpc|npc"
 #define MEDNAFEN_CORE_TIMING_FPS 60.25
@@ -392,6 +438,17 @@ static void check_variables(void)
       else if (!strcmp(var.value, "english"))
          setting_ngp_language = 1;
    }
+
+   var.key   = "ngp_frameskip";
+   var.value = NULL;
+
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      int fs = atoi(var.value);
+      if (fs < 0) fs = 0;
+      if (fs > 5) fs = 5;
+      setting_ngp_frameskip = fs;
+   }
 }
 
 void retro_init(void)
@@ -408,21 +465,25 @@ void retro_init(void)
       strcpy(retro_base_directory, dir);
    else
    {
-      /* TODO: Add proper fallback */
+      /* Frontend did not provide a system directory. We'll fall back
+       * to the directory containing the loaded ROM once it is known
+       * (see Load() below). */
+      retro_base_directory[0] = '\0';
       if (log_cb)
-         log_cb(RETRO_LOG_WARN, "System directory is not defined. Fallback on using same dir as ROM for system directory later ...\n");
+         log_cb(RETRO_LOG_WARN, "System directory is not defined. Will fall back to the ROM directory.\n");
    }
-   
+
    /* If save directory is defined use it, otherwise use system directory */
    if (environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &dir) && dir)
       strcpy(retro_save_directory, dir);
    else
    {
-      /* TODO: Add proper fallback */
+      /* Save directory not set — defer to retro_base_directory (or
+       * ultimately the ROM directory) once that is resolved. */
+      retro_save_directory[0] = '\0';
       if (log_cb)
-         log_cb(RETRO_LOG_WARN, "Save directory is not defined. Fallback on using SYSTEM directory ...\n");
-      strcpy(retro_save_directory, retro_base_directory);
-   }      
+         log_cb(RETRO_LOG_WARN, "Save directory is not defined. Will fall back to the system directory.\n");
+   }
 
    perf_get_cpu_features_cb = NULL;
    if (environ_cb(RETRO_ENVIRONMENT_GET_PERF_INTERFACE, &perf_cb))
@@ -565,6 +626,7 @@ void retro_run(void)
    static int16_t sound_buf[0x10000];
    EmulateSpecStruct spec;
    bool updated = false;
+   static unsigned frame_counter;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
       check_variables();
@@ -602,6 +664,16 @@ void retro_run(void)
 
    width  = spec.DisplayRect.w;
    height = spec.DisplayRect.h;
+
+   /* Frame skip: always run CPU emulation, but drop video and audio
+    * on skip frames. Skip pattern: with setting_ngp_frameskip = N,
+    * render frame_count % (N+1) == 0 and skip the rest. */
+   frame_counter++;
+   if (setting_ngp_frameskip > 0 &&
+       (frame_counter % (setting_ngp_frameskip + 1)) != 0)
+   {
+      return;
+   }
 
    video_cb(surf->pixels, width, height, FB_WIDTH * 2);
 

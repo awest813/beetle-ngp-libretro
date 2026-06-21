@@ -168,6 +168,32 @@ Enable `vmu_lcd=1` to show game preview on the VMU LCD. With `vmu_save=1`, flash
 
 Set `renderer=1` for PowerVR hardware scaling (DMA texture upload, dirty-frame skip). Falls back to software blitter on errors. See `dreamcast/HARDWARE_RENDERING.md` for architecture details.
 
+### Build Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `DEBUG=1` | 0 | Disable optimization, enable assertions |
+| `USE_COMPUTED_GOTO=1` | auto for Dreamcast | Use the threaded interpreter (see below) |
+| `NO_COMPUTED_GOTO=1` | 0 | Force-disable computed-goto (use the original dispatcher) |
+| `STATIC_LINKING=1` | auto for Dreamcast | Build as a static archive |
+| `FORCE_VFS=1` | auto for static | Include libretro VFS in the static archive |
+
+### Threaded Interpreter (TLCS-900h)
+
+The Dreamcast build uses a **threaded interpreter** for the TLCS-900h CPU core. Instead of a 256-entry function pointer dispatch table (one indirect call per instruction), it uses GCC's `&&label` computed-goto feature to jump directly to a label, saving the function pointer load + jsr + rts overhead per instruction.
+
+The threaded file (`mednafen/ngp/TLCS-900h/TLCS900h_threaded.c`) `#include`s all handler source files plus the original interpreter so everything compiles in one translation unit. This allows GCC to inline across handler boundaries and devirtualize the secondary dispatch.
+
+The threaded build is enabled by `USE_COMPUTED_GOTO=1`, which is set automatically for the Dreamcast target. To verify the build is using the threaded interpreter, check the output of `make`:
+
+```bash
+cd dreamcast && make
+# If USE_COMPUTED_GOTO is set, TLCS900h_threaded.c is compiled
+# and the per-handler .c files are not
+```
+
+The threaded interpreter is incompatible with platforms where GCC's `&&label` extension is not available (e.g., MSVC). For those platforms, the build falls back to the original function-pointer dispatcher.
+
 ## Troubleshooting
 
 **`scramble: command not found`**

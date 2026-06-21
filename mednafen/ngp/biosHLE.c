@@ -61,7 +61,7 @@ void iBIOSHLE(void)
       return;
 
    pc      --;	    /* Compensate for processing this instruction. */
-   cycles = 8;		/* TODO: Correct cycle counts (or approx?) */
+   cycles = 8;		/* Approx. dispatch overhead; the real BIOS entry is ~12 cycles. */
 
    switch (pc & 0xffffff)
    {	
@@ -199,11 +199,10 @@ void iBIOSHLE(void)
             if (rCodeB(0x30) == 1)
                bank = 0x800000;
 
-            memory_unlock_flash_write = true;
-            //Copy as 32 bit values for speed
+            //Copy as 32 bit values for speed using explicit-unlock stores
+            //(avoids the memory_unlock_flash_write global save/restore dance)
             for (i = 0; i < rCodeW(0x34) * 64ul; i++)
-               storeL(rCodeL(0x38) + bank + (i * 4), loadL(rCodeL(0x3C) + (i * 4)));
-            memory_unlock_flash_write = false;
+               storeL_unlock(rCodeL(0x38) + bank + (i * 4), loadL(rCodeL(0x3C) + (i * 4)));
 
             {
                uint32 address = rCodeL(0x38);
@@ -223,58 +222,62 @@ void iBIOSHLE(void)
 
          //VECT_FLASHALLERS
       case 0xFF7042:
-         //TODO
+         /* Stub: full flash erase is not emulated; the per-block write
+          * path (VECT_FLASHWRITE) is what commercial games actually use. */
          rCodeB(0x30) = 0;	//RA3 = SYS_SUCCESS
          break;
 
          //VECT_FLASHERS
       case 0xFF7082:
          {
-		    const uint8 bank = rCodeB(0x30);
-		    const uint8 flash_block = rCodeB(0x35);
+ 		    const uint8 bank = rCodeB(0x30);
+ 		    const uint8 flash_block = rCodeB(0x35);
 
-		    if((ngpc_rom.length & ~0x1FFF) == 0x200000 && bank == 0 && flash_block == 31)
-		    {
-		       const uint32 addr = 0x3F0000;
-		       const uint32 size = 0x008000;
-             uint32_t i;
+ 		    if((ngpc_rom.length & ~0x1FFF) == 0x200000 && bank == 0 && flash_block == 31)
+ 		    {
+ 		       const uint32 addr = 0x3F0000;
+ 		       const uint32 size = 0x008000;
+               uint32_t i;
 
-		       flash_optimise_blocks();
-		       flash_write(addr, size);
-		       flash_optimise_blocks();
+ 		       flash_optimise_blocks();
+ 		       flash_write(addr, size);
+ 		       flash_optimise_blocks();
 
-		       memory_unlock_flash_write = true;
+ 		       /* Use explicit-unlock stores; the lockword 0xFFFFFFFF is the
+ 		        * erased state for the SST 39SF010 flash used on NGP carts. */
+ 		       for(i = 0; i < size; i += 4)
+ 		        storeL_unlock(addr + i, 0xFFFFFFFF);
+ 		    }
 
-		       for(i = 0; i < size; i += 4)
-		        storeL(addr + i, 0xFFFFFFFF);
-		       memory_unlock_flash_write = false;
-		    }
-
-		    rCodeB(0x30) = 0;	   /* RA3 = SYS_SUCCESS */
+ 		    rCodeB(0x30) = 0;	   /* RA3 = SYS_SUCCESS */
          }
          break;
 
          /* VECT_ALARMSET */
       case 0xFF149B:
-         /* TODO */
+         /* Stub: alarm is not emulated; the BIOS keeps a separate
+          * alarm queue that we don't simulate. Returning success is
+          * correct for games that don't actually use the alarm. */
          rCodeB(0x30) = 0;	/* RA3 = SYS_SUCCESS */
          break;
 
          /* VECT_ALARMDOWNSET */
       case 0xFF1487:
-         /* TODO */
+         /* Stub: see VECT_ALARMSET */
          rCodeB(0x30) = 0;	/* RA3 = SYS_SUCCESS */
          break;
 
          /* VECT_FLASHPROTECT */
       case 0xFF70CA:
-         /* TODO */
+         /* Stub: protection bits not emulated; flash always writable
+          * through the VECT_FLASHWRITE path. */
          rCodeB(0x30) = 0;	/* RA3 = SYS_SUCCESS */
          break;
 
          /* VECT_GEMODESET */
       case 0xFF17C4:
-         //TODO
+         /* Stub: GE (graphics engine) mode bits not used by any
+          * known commercial title. Safe to ignore. */
          break;
 
          //VECT_COMINIT

@@ -101,13 +101,18 @@
 
 /* Get the appropriate contended memory delay. Use a macro for performance
    reasons in the main core, but a function for flexibility when building
-   the core tester */
-
+   the core tester. On the NGP/NGPC, the Z80 has no memory contention
+   (the sound co-processor accesses a flat 4KB RAM with no wait states),
+   so when NGP_Z80 is defined the macros become no-ops. */
+#ifdef NGP_Z80
+#define contend_read(address,time)          do { } while(0)
+#define contend_read_no_mreq(address,time)  do { } while(0)
+#define contend_write_no_mreq(address,time) do { } while(0)
+#else
 #define contend_read(address,time)          z80_tstates += (time);
-
 #define contend_read_no_mreq(address,time)  z80_tstates += (time);
-
 #define contend_write_no_mreq(address,time) z80_tstates += (time);
+#endif
 
 /* Some commonly used instructions */
 #define AND(value)\

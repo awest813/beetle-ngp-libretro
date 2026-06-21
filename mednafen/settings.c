@@ -22,6 +22,7 @@
 
 char retro_base_directory[1024];
 uint32_t setting_ngp_language = 0;
+uint32_t setting_ngp_frameskip = 0;
 
 bool MDFN_GetSettingB(const char *name)
 {

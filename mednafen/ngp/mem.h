@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <boolean.h>
+#include <retro_inline.h>
 
 #include "../mednafen-types.h"
 
@@ -54,6 +55,14 @@ uint32_t loadL(uint32_t address);
 void storeB(uint32_t address, uint8_t data);
 void storeW(uint32_t address, uint16_t data);
 void storeL(uint32_t address, uint32_t data);
+
+/* Explicit-unlock store functions: bypass the memory_unlock_flash_write
+ * global and force the ROM-write path (or force the locked path).
+ * Used by the flash loader to restore battery saves without touching
+ * the global state. */
+void storeB_unlock(uint32_t address, uint8_t data);
+void storeW_unlock(uint32_t address, uint16_t data);
+void storeL_unlock(uint32_t address, uint32_t data);
 
 void SetFRM(void);
 void RecacheFRM(void);
