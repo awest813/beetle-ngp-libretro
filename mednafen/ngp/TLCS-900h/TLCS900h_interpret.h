@@ -72,11 +72,10 @@ extern bool brCode;
 
 static INLINE uint8 fetch8_fast(void)
 {
-	uint8_t val;
 	uint32_t addr;
 	uint8_t *page;
 
-	addr = pc++;
+	addr = pc++ & 0xFFFFFF;
 	page = FastReadMap[addr >> 16];
 	if (page)
 		return page[addr];

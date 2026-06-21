@@ -1,8 +1,8 @@
 #ifndef MDFN_SETTINGS_H
 #define MDFN_SETTINGS_H
 
+#include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {

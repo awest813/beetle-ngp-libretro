@@ -133,6 +133,8 @@ static void video_refresh(const void *data, unsigned width, unsigned height, siz
 
    if (dc_video_get_renderer() == DC_VIDEO_RENDERER_PVR)
    {
+      if (!data)
+         return;
       dc_video_present_rgb555(data, width, height, pitch, video_scale, vsync_enabled);
    }
    else

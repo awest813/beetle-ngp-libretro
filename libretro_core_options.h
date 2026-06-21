@@ -286,11 +286,6 @@ static INLINE void libretro_set_core_options(retro_environment_t environ_cb)
 
          values_buf[i] = NULL;
 
-         /* Skip options that are irrelevant when using the
-          * old style core options interface */
-         if ((strcmp(key, "fceumm_advance_sound_options") == 0))
-            continue;
-
          if (desc)
          {
             size_t num_values = 0;

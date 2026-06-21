@@ -238,7 +238,7 @@ uint16 generic_DIVS_B(int16 val, int8 div)
 	{
 		int16 quo = val / (int16)div;
 		int16 rem = val % (int16)div;
-		if (quo > 0xFF) SETFLAG_V1 else SETFLAG_V0
+		if (quo > 0x7F || quo < -0x80) SETFLAG_V1 else SETFLAG_V0
 		return (quo & 0xFF) | ((rem & 0xFF) << 8);
 	}
 }
@@ -254,7 +254,7 @@ uint32 generic_DIVS_W(int32 val, int16 div)
 	{
 		int32 quo = val / (int32)div;
 		int32 rem = val % (int32)div;
-		if (quo > 0xFFFF) SETFLAG_V1 else SETFLAG_V0
+		if (quo > 0x7FFF || quo < -0x8000) SETFLAG_V1 else SETFLAG_V0
 		return (quo & 0xFFFF) | ((rem & 0xFFFF) << 16);
 	}
 }
@@ -582,6 +582,7 @@ static void e(void)  { }
 static void es(void) { }
 static void ed(void) { }
 static void er(void) { }
+#endif /* !THREADED_INTERPRETER */
 
 //=========================================================================
 
@@ -591,6 +592,7 @@ static void er(void) { }
  * TLCS900h_threaded.c call tlcs_dispatch_src() directly via
  * switch dispatch. The tables are kept for the non-threaded
  * build where they are used by the original TLCS900h_interpret(). */
+#ifndef THREADED_INTERPRETER
 static void (*srcDecode[256])(void) = 
 {
 /*0*/	es,			es,			es,			es,			srcPUSH,	es,			srcRLD,		srcRRD,
@@ -700,6 +702,7 @@ static void (*regDecode[256])() =
 /*F*/	regCP,		regCP,		regCP,		regCP,		regCP,		regCP,		regCP,		regCP,
 		regRLCA,	regRRCA,	regRLA,		regRRA,		regSLAA,	regSRAA,	regSLLA,	regSRLA
 };
+#endif /* !THREADED_INTERPRETER */
 
 //=========================================================================
 

@@ -27,7 +27,7 @@ fi
 echo "makeip not found; generating minimal IP.BIN with dd/printf..." >&2
 
 # Create zeroed 32KB block
-dd if=/dev/zero of="${OUT}" bs=1 count=${IP_SIZE} 2>/dev/null
+dd if=/dev/zero of="${OUT}" bs=32768 count=1 2>/dev/null
 
 # Magic header at offset 0x00: "SEGA SEGAKATANA ..." (16 bytes)
 printf 'SEGA SEGAKATANA' | dd of="${OUT}" bs=1 seek=0 conv=notrunc 2>/dev/null

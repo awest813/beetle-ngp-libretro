@@ -38,12 +38,6 @@ else ifneq ($(findstring MINGW,$(shell uname -a)),)
 	system_platform = win
 endif
 
-TARGET_NAME := 2048
-GIT_VERSION ?= " $(shell git rev-parse --short HEAD || echo unknown)"
-ifneq ($(GIT_VERSION)," unknown")
-	CFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
-endif
-
 ifneq (,$(findstring msvc,$(platform)))
 LIBS :=
 else
@@ -58,13 +52,6 @@ ifeq ($(platform), unix)
 PLAT=_unix
 endif
 endif
-
-SPACE :=
-SPACE := $(SPACE) $(SPACE)
-BACKSLASH :=
-BACKSLASH := \$(BACKSLASH)
-filter_out1 = $(filter-out $(firstword $1),$1)
-filter_out2 = $(call filter_out1,$(call filter_out1,$1))
 
 NEED_BPP = 16
 NEED_BLIP = 1

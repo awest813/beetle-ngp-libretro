@@ -97,7 +97,7 @@ static INLINE bool loadW_fast(uint32_t address, uint16_t *out)
 #ifdef MSB_FIRST
 		*out = ((uint16_t)ptr[1] << 8) | ptr[0];
 #else
-		*out = *(uint16_t *)ptr;
+		*out = (uint16_t)ptr[0] | ((uint16_t)ptr[1] << 8);
 #endif
 		return true;
 	}

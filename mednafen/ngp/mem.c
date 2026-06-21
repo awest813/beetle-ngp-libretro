@@ -469,6 +469,7 @@ void storeW(uint32 address, uint16_t data)
    {
       timer_write8(address, data & 0xFF);
       timer_write8(address + 1, data >> 8);
+      return;
    }
 
    switch (address)

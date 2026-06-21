@@ -43,11 +43,6 @@ To bundle ROMs on the disc:
 make cdi ROMS_DIR=/path/to/roms
 ```
 
-To embed a single auto-boot ROM:
-```bash
-make cdi BOOT_ROM=/path/to/game.ngp
-```
-
 ### `make sdiso` / `make iso` — SD Card Image
 
 ```bash
@@ -139,7 +134,7 @@ Without a ROM argument, the launcher presents a main menu with ROM browser, sett
 | Key | Values | Default |
 |-----|--------|---------|
 | `volume` | 0–255 | 200 |
-| `scale` | 1–4 | 3 |
+| `scale` | 2–4 | 3 |
 | `video` | 0=Auto, 1=VGA, 2=TV | 0 |
 | `renderer` | 0=Software, 1=PVR | 0 |
 | `vsync` | 0=Off, 1=On | 1 |
@@ -153,13 +148,6 @@ Without a ROM argument, the launcher presents a main menu with ROM browser, sett
 
 ## Development
 
-### Debug Build
-
-```bash
-cd dreamcast
-make DEBUG=1       # -O0 -g, no optimizations
-```
-
 ### VMU Debug Screen
 
 Enable `vmu_lcd=1` to show game preview on the VMU LCD. With `vmu_save=1`, flash saves are mirrored to VMU as `.FLA` files.
@@ -172,7 +160,6 @@ Set `renderer=1` for PowerVR hardware scaling (DMA texture upload, dirty-frame s
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `DEBUG=1` | 0 | Disable optimization, enable assertions |
 | `USE_COMPUTED_GOTO=1` | auto for Dreamcast | Use the threaded interpreter (see below) |
 | `NO_COMPUTED_GOTO=1` | 0 | Force-disable computed-goto (use the original dispatcher) |
 | `STATIC_LINKING=1` | auto for Dreamcast | Build as a static archive |

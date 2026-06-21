@@ -55,7 +55,7 @@ typedef struct
 } FlashFileBlockHeader;
 
 /* Local Data */
-static FlashFileBlockHeader	blocks[256];
+static FlashFileBlockHeader	blocks[FLASH_MAX_BLOCKS];
 static uint16_t block_count;
 
 void flash_optimise_blocks(void)
@@ -99,6 +99,9 @@ void flash_optimise_blocks(void)
             /* Guard against underflow if block addresses are malformed */
             if (new_len < blocks[i].data_length)
                new_len = blocks[i].data_length;
+            /* Clamp to uint16_t range to prevent truncation */
+            if (new_len > 0xFFFF)
+               new_len = 0xFFFF;
             blocks[i].data_length = (uint16_t)new_len;
          }
 
@@ -172,6 +175,8 @@ void flash_read(void)
 
    //Read the flash data
    flashdata = (uint8_t*)malloc(header.total_file_length * sizeof(uint8_t));
+   if (!flashdata)
+      return;
    system_io_flash_read(flashdata, header.total_file_length);
 
    do_flash_read(flashdata);
@@ -203,6 +208,8 @@ void flash_write(uint32_t start_address, uint16_t length)
    }
 
    // New block needs to be added
+   if (block_count >= FLASH_MAX_BLOCKS)
+      return;
    blocks[block_count].start_address = start_address;
    blocks[block_count].data_length = length;
    block_count++;
@@ -234,6 +241,8 @@ uint8_t *make_flash_commit(int32_t *length)
 
    /* Write the flash data */
    flashdata = (uint8_t*)malloc(header.total_file_length * sizeof(uint8_t));
+   if (!flashdata)
+      return NULL;
 
    /* Copy header */
    memcpy(flashdata, &header, sizeof(FlashFileHeader));

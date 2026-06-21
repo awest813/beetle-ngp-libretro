@@ -318,6 +318,8 @@ static int Load(const char *path,
    MDFNMP_Init(1024, 1024 * 1024 * 16 / 1024);
 
    NGPGfx = (ngpgfx_t*)calloc(1, sizeof(*NGPGfx));
+   if (!NGPGfx)
+      return 0;
    NGPGfx->layer_enable = 1 | 2 | 4;
 
    MDFNNGPCSOUND_Init();
@@ -462,7 +464,7 @@ void retro_init(void)
       log_cb = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &dir) && dir)
-      strcpy(retro_base_directory, dir);
+      strlcpy(retro_base_directory, dir, sizeof(retro_base_directory));
    else
    {
       /* Frontend did not provide a system directory. We'll fall back
@@ -475,7 +477,7 @@ void retro_init(void)
 
    /* If save directory is defined use it, otherwise use system directory */
    if (environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &dir) && dir)
-      strcpy(retro_save_directory, dir);
+      strlcpy(retro_save_directory, dir, sizeof(retro_save_directory));
    else
    {
       /* Save directory not set — defer to retro_base_directory (or
@@ -646,12 +648,6 @@ void retro_run(void)
    {
       struct retro_system_av_info system_av_info;
 
-      if (update_video)
-      {
-         memset(&system_av_info, 0, sizeof(system_av_info));
-         environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &system_av_info);
-      }
-
       retro_get_system_av_info(&system_av_info);
       environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &system_av_info);
 
@@ -678,7 +674,12 @@ void retro_run(void)
    video_cb(surf->pixels, width, height, FB_WIDTH * 2);
 
    for (total = 0; total < spec.SoundBufSize; )
-      total += audio_batch_cb(sound_buf + total*2, spec.SoundBufSize - total);
+   {
+      int written = audio_batch_cb(sound_buf + total*2, spec.SoundBufSize - total);
+      if (written <= 0)
+         break;
+      total += written;
+   }
 
 }
 
@@ -826,7 +827,7 @@ bool retro_serialize(void *data, size_t size)
 
    ret = MDFNSS_SaveSM(&st, 0, 0, NULL, NULL, NULL);
 
-   memcpy(data, st.data, size);
+   memcpy(data, st.data, st.len);
    free(st.data);
 
    return ret;
@@ -842,7 +843,8 @@ bool retro_unserialize(const void *data, size_t size)
    st.malloced       = 0;
    st.initial_malloc = 0;
 
-   MDFNSS_LoadSM(&st, 0, 0);
+   if (!MDFNSS_LoadSM(&st, 0, 0))
+      return false;
 
    return true;
 }

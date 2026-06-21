@@ -137,7 +137,7 @@ static bool menu_confirm(const char *title, const char *message,
          selected ^= 1;
       else if (pressed & CONT_A)
          return selected == 0;
-      else if (pressed & CONT_B || pressed & CONT_START)
+      else if ((pressed & CONT_B) || (pressed & CONT_START))
          return false;
 
       thd_sleep(16);
@@ -444,7 +444,7 @@ menu_action_t menu_main(char **rom_path_out)
             }
          }
       }
-      else if (pressed & CONT_B || pressed & CONT_START)
+      else if ((pressed & CONT_B) || (pressed & CONT_START))
       {
          if (menu_confirm("Exit?", "Quit Beetle NGP?", NULL, false))
          {
@@ -555,7 +555,7 @@ char *menu_pick_rom(void)
             result = strdup(roms[list.selected].path);
             break;
          }
-         else if (pressed & CONT_B || pressed & CONT_START)
+         else if ((pressed & CONT_B) || (pressed & CONT_START))
             break;
       }
 
@@ -745,7 +745,7 @@ void menu_settings_for_rom(const char *rom_path)
       nav = dc_menu_input_list_delta(&input, pressed);
       if (nav != 0)
          dc_ui_list_move(&list, nav, SETTINGS_COUNT);
-      else if (pressed & CONT_DPAD_LEFT || pressed & CONT_DPAD_RIGHT)
+      else if ((pressed & CONT_DPAD_LEFT) || (pressed & CONT_DPAD_RIGHT))
       {
          int delta = (pressed & CONT_DPAD_RIGHT) ? 1 : -1;
 
@@ -845,7 +845,7 @@ void menu_settings_for_rom(const char *rom_path)
                || list.selected == 7 || list.selected == 8)
             dirty = true;
       }
-      else if (pressed & CONT_B || pressed & CONT_START)
+      else if ((pressed & CONT_B) || (pressed & CONT_START))
          break;
 
       thd_sleep(16);
@@ -968,7 +968,7 @@ menu_pause_action_t menu_pause(const char *rom_path)
       nav = dc_menu_input_list_delta(&input, pressed);
       if (nav != 0)
          dc_ui_list_move(&list, nav, count);
-      else if (pressed & CONT_A || (pressed & CONT_START && list.selected == 0))
+      else if ((pressed & CONT_A) || ((pressed & CONT_START) && list.selected == 0))
       {
          switch (list.selected)
          {
@@ -999,7 +999,7 @@ menu_pause_action_t menu_pause(const char *rom_path)
          }
          break;
       }
-      else if (pressed & CONT_B || pressed & CONT_START)
+      else if ((pressed & CONT_B) || (pressed & CONT_START))
       {
          action = MENU_PAUSE_RESUME;
          break;

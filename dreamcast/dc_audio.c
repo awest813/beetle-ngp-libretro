@@ -21,6 +21,7 @@ struct dc_audio_stream
    bool enabled;
    bool started;
    unsigned underrun_count;
+   unsigned overrun_count;
    int16_t last_left;
    int16_t last_right;
 };
@@ -110,7 +111,7 @@ static size_t dc_audio_queue(dc_audio_stream_t *stream,
          /* Ring full — CPU can't keep up. Drop sample but save for underrun fallback. */
          stream->last_left  = src[queued * 2];
          stream->last_right = src[queued * 2 + 1];
-         stream->underrun_count++;
+         stream->overrun_count++;
          break;
       }
 
