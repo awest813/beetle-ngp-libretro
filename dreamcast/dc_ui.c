@@ -111,17 +111,21 @@ void dc_ui_begin_frame(void)
 void dc_ui_fill_rect(int x, int y, int w, int h, uint16_t color)
 {
    int yy;
-   int xx;
 
    if (!ui_buffer || !ui_buf_w || !ui_buf_h)
       return;
 
    clamp_rect(&x, &y, &w, &h);
 
+   if (w <= 0 || h <= 0)
+      return;
+
    for (yy = y; yy < y + h; yy++)
    {
       uint16_t *row = ui_buffer + yy * ui_buf_w;
+      int xx;
 
+      /* Fast path: single-pixel row fill with memset-like loop */
       for (xx = x; xx < x + w; xx++)
          row[xx] = color;
    }
@@ -129,13 +133,39 @@ void dc_ui_fill_rect(int x, int y, int w, int h, uint16_t color)
 
 void dc_ui_draw_text(int x, int y, int color, const char *text)
 {
+   int max_chars;
+   char clip[64];
+   size_t len;
+
    if (!ui_buffer || !text || x < 0 || y < 0)
       return;
 
-   if ((unsigned)x >= ui_buf_w || (unsigned)y >= ui_buf_h)
+   if ((unsigned)y >= ui_buf_h)
       return;
 
-   bfont_draw_str(ui_buffer + y * ui_buf_w + x, ui_buf_w, color, text);
+   if ((unsigned)x >= ui_buf_w)
+      return;
+
+   /* Clip text that would overflow the right edge */
+   max_chars = ((int)ui_buf_w - x) / 8;
+   if (max_chars < 1)
+      return;
+
+   len = strlen(text);
+   if ((int)len > max_chars)
+      len = (size_t)max_chars;
+
+   /* Use stack buffer to avoid modifying the caller's string */
+   if (len < sizeof(clip))
+   {
+      memcpy(clip, text, len);
+      clip[len] = '\0';
+      bfont_draw_str(ui_buffer + y * ui_buf_w + x, ui_buf_w, color, clip);
+   }
+   else
+   {
+      bfont_draw_str(ui_buffer + y * ui_buf_w + x, ui_buf_w, color, text);
+   }
 }
 
 void dc_ui_draw_header(const char *title, const char *subtitle)
@@ -157,7 +187,7 @@ void dc_ui_draw_header(const char *title, const char *subtitle)
    if (subtitle)
    {
       y += (layout.height >= 400) ? 24 : 18;
-      dc_ui_draw_text(x, y, DC_UI_COLOR_TEXT_DIM, subtitle);
+      dc_ui_draw_text(x, y, DC_UI_COLOR_TEXT, subtitle);
    }
 }
 
@@ -174,7 +204,7 @@ void dc_ui_draw_footer(const char *hint)
 
    dc_ui_fill_rect(0, y, (int)layout.width, layout.footer_h, DC_UI_COLOR_HEADER);
    dc_ui_fill_rect(0, y, (int)layout.width, 1, DC_UI_COLOR_BORDER);
-   dc_ui_draw_text(layout.margin_x, y + 8, DC_UI_COLOR_TEXT_DIM, hint);
+   dc_ui_draw_text(layout.margin_x, y + 8, DC_UI_COLOR_TEXT, hint);
 }
 
 void dc_ui_draw_panel(int x, int y, int w, int h)
@@ -211,16 +241,14 @@ void dc_ui_draw_menu_row(int y, int w, bool selected, const char *label,
    if (value && value[0])
    {
       snprintf(line, sizeof(line), "%s%s", selected ? "> " : "  ", label);
-      dc_ui_draw_text(x, y, selected ? DC_UI_COLOR_TEXT : DC_UI_COLOR_TEXT_DIM,
-            line);
+      dc_ui_draw_text(x, y, DC_UI_COLOR_TEXT, line);
       dc_ui_draw_text(x + w - (int)strlen(value) * 8 - 8, y,
-            selected ? DC_UI_COLOR_TEXT : DC_UI_COLOR_TEXT_DIM, value);
+            DC_UI_COLOR_TEXT, value);
    }
    else
    {
       snprintf(line, sizeof(line), "%s%s", selected ? "> " : "  ", label);
-      dc_ui_draw_text(x, y, selected ? DC_UI_COLOR_TEXT : DC_UI_COLOR_TEXT_DIM,
-            line);
+      dc_ui_draw_text(x, y, DC_UI_COLOR_TEXT, line);
    }
 }
 
@@ -234,24 +262,32 @@ void dc_ui_draw_hint(int y, const char *text)
    dc_ui_get_layout(&layout);
    dc_ui_draw_panel(layout.margin_x, y,
          (int)layout.width - layout.margin_x * 2, layout.row_h + 6);
-   dc_ui_draw_text(layout.margin_x + 8, y + 4, DC_UI_COLOR_TEXT_DIM, text);
+   dc_ui_draw_text(layout.margin_x + 8, y + 4, DC_UI_COLOR_TEXT, text);
 }
 
 void dc_ui_draw_badge(int x, int y, const char *text, bool active)
 {
    int w;
-   uint16_t bg;
-   int color;
 
    if (!text || !text[0])
       return;
 
    w = (int)strlen(text) * 8 + 8;
-   bg    = active ? DC_UI_COLOR_ACCENT : DC_UI_COLOR_PANEL;
-   color = active ? DC_UI_COLOR_TEXT : DC_UI_COLOR_TEXT_DIM;
 
-   dc_ui_fill_rect(x, y, w, 14, bg);
-   dc_ui_draw_text(x + 4, y + 2, color, text);
+   if (active)
+   {
+      dc_ui_fill_rect(x, y, w, 14, DC_UI_COLOR_ACCENT);
+      dc_ui_draw_text(x + 4, y + 2, DC_UI_COLOR_TEXT, text);
+   }
+   else
+   {
+      dc_ui_fill_rect(x, y, w, 14, DC_UI_COLOR_PANEL);
+      dc_ui_fill_rect(x, y, w, 1, DC_UI_COLOR_BORDER);
+      dc_ui_fill_rect(x, y + 13, w, 1, DC_UI_COLOR_BORDER);
+      dc_ui_fill_rect(x, y, 1, 14, DC_UI_COLOR_BORDER);
+      dc_ui_fill_rect(x + w - 1, y, 1, 14, DC_UI_COLOR_BORDER);
+      dc_ui_draw_text(x + 4, y + 2, DC_UI_COLOR_TEXT_DIM, text);
+   }
 }
 
 void dc_ui_draw_scrollbar(int x, int y, int h, int total, int visible,

@@ -120,7 +120,7 @@ static bool menu_confirm(const char *title, const char *message,
 
       menu_frame_begin(title, message);
       if (detail && detail[0])
-         dc_ui_draw_text(layout.margin_x, layout.content_y, DC_UI_COLOR_TEXT_DIM,
+         dc_ui_draw_text(layout.margin_x, layout.content_y, DC_UI_COLOR_TEXT,
                detail);
       dc_ui_draw_menu_row(y, row_w, selected == 0, "Yes", NULL);
       dc_ui_draw_menu_row(y + layout.row_h, row_w, selected == 1, "No", NULL);
@@ -195,16 +195,24 @@ void menu_splash(void)
       char line[64];
 
       menu_frame_begin("Beetle NeoGeo Pocket", "Dreamcast launcher");
+
       dc_ui_draw_text(layout.margin_x, layout.content_y + 8, DC_UI_COLOR_TEXT,
             "Neo Geo Pocket Color emulator");
-      snprintf(line, sizeof(line), "%ux%u  %s  %s",
-            dc_video_width(), dc_video_height(),
+
+      snprintf(line, sizeof(line), "v1.29.0  %ux%u",
+            dc_video_width(), dc_video_height());
+      dc_ui_draw_text(layout.margin_x, layout.content_y + 24,
+            DC_UI_COLOR_TEXT, line);
+
+      snprintf(line, sizeof(line), "%s  %s",
             dc_video_cable_name(dc_video_get_cable()),
             dc_video_renderer_name(dc_video_get_renderer()));
-      dc_ui_draw_text(layout.margin_x, layout.content_y + 32,
-            DC_UI_COLOR_TEXT_DIM, line);
-      dc_ui_draw_text(layout.margin_x, layout.content_y + 56,
-            DC_UI_COLOR_TEXT_DIM, "Press any button to continue");
+      dc_ui_draw_text(layout.margin_x, layout.content_y + 40,
+            DC_UI_COLOR_TEXT, line);
+
+      dc_ui_draw_text(layout.margin_x, layout.content_y + 64,
+            DC_UI_COLOR_TEXT, "Press any button to continue");
+
       dc_ui_draw_footer("Place ROMs in /sd/ngp");
       dc_ui_present(true);
 
@@ -219,20 +227,41 @@ void menu_splash(void)
 
 void menu_loading_screen(const char *rom_path)
 {
+   dc_menu_input_t input;
    dc_ui_layout_t layout;
    char line[80];
+   unsigned frame;
+   static const char dots[] = "...";
+   unsigned dot_count;
 
    dc_video_menu_begin();
+   dc_menu_input_reset(&input);
    dc_ui_get_layout(&layout);
 
-   menu_frame_begin("Loading", basename_only(rom_path));
-   dc_ui_draw_text(layout.margin_x, layout.content_y + 24, DC_UI_COLOR_TEXT,
-         "Please wait...");
-   snprintf(line, sizeof(line), "%s", rom_path ? rom_path : "");
-   truncate_middle(line, sizeof(line), line, 34);
-   dc_ui_draw_text(layout.margin_x, layout.content_y + 48, DC_UI_COLOR_TEXT_DIM,
-         line);
-   dc_ui_present(true);
+   for (frame = 0; frame < 180; frame++)
+   {
+      dot_count = (frame / 10) % 4;
+
+      menu_frame_begin("Loading", basename_only(rom_path));
+      snprintf(line, sizeof(line), "Please wait%.*s", dot_count, dots);
+      dc_ui_draw_text(layout.margin_x, layout.content_y + 24, DC_UI_COLOR_TEXT,
+            line);
+
+      if (rom_path)
+      {
+         char tmp[80];
+         strncpy(tmp, rom_path, sizeof(tmp) - 1);
+         tmp[sizeof(tmp) - 1] = '\0';
+         truncate_middle(line, sizeof(line), tmp, 34);
+         dc_ui_draw_text(layout.margin_x, layout.content_y + 48,
+               DC_UI_COLOR_TEXT, line);
+      }
+
+      dc_ui_draw_footer("Do not remove storage media");
+      dc_ui_present(true);
+      thd_sleep(16);
+   }
+
    dc_video_menu_end();
 }
 
@@ -349,7 +378,7 @@ static void draw_main_menu(dc_ui_list_t *list, const main_item_t *items,
    visible = dc_ui_list_visible_rows(list);
    row_w   = (int)layout.width - layout.margin_x * 2 - 12;
 
-   menu_frame_begin("Beetle NeoGeo Pocket", "D-Pad: move (hold to scroll fast)");
+   menu_frame_begin("Beetle NeoGeo Pocket", "D-Pad: navigate");
 
    y = list->content_y;
    for (i = list->scroll; i < count && i < list->scroll + visible; i++)
@@ -361,7 +390,7 @@ static void draw_main_menu(dc_ui_list_t *list, const main_item_t *items,
 
    dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
          list->content_y, list->content_h, count, visible, list->scroll);
-   dc_ui_draw_footer("A: select   B: back");
+   dc_ui_draw_footer("A: select   Start: exit");
 }
 
 menu_action_t menu_main(char **rom_path_out)
@@ -444,7 +473,7 @@ menu_action_t menu_main(char **rom_path_out)
             }
          }
       }
-      else if ((pressed & CONT_B) || (pressed & CONT_START))
+      else if ((pressed & CONT_START))
       {
          if (menu_confirm("Exit?", "Quit Beetle NGP?", NULL, false))
          {
@@ -474,17 +503,20 @@ static void draw_rom_menu(dc_ui_list_t *list)
    visible = dc_ui_list_visible_rows(list);
    row_w   = (int)layout.width - layout.margin_x * 2 - 12;
 
-   snprintf(subtitle, sizeof(subtitle), "%d ROM(s)   S=state  B=battery",
-         rom_count);
+   snprintf(subtitle, sizeof(subtitle), "%d ROM(s)", rom_count);
 
    menu_frame_begin("Select ROM", subtitle);
 
    if (rom_count == 0)
    {
       dc_ui_draw_text(layout.margin_x, list->content_y, DC_UI_COLOR_TEXT,
-            "No ROMs found on /sd or /ide");
-      dc_ui_draw_hint(list->content_y + 28,
-            "Copy .ngp / .ngc files to /sd/ngp");
+            "No ROMs found");
+      dc_ui_draw_text(layout.margin_x, list->content_y + 18, DC_UI_COLOR_TEXT,
+            "Copy .ngp / .ngc files to:");
+      dc_ui_draw_text(layout.margin_x + 8, list->content_y + 36,
+            DC_UI_COLOR_TEXT, "/sd/ngp");
+      dc_ui_draw_text(layout.margin_x + 8, list->content_y + 52,
+            DC_UI_COLOR_TEXT, "/ide/ngp");
       dc_ui_draw_footer("Press A or B to go back");
       return;
    }
@@ -501,7 +533,7 @@ static void draw_rom_menu(dc_ui_list_t *list)
    dc_ui_draw_scrollbar((int)layout.width - layout.margin_x - 8,
          list->content_y, list->content_h, rom_count, visible, list->scroll);
 
-   snprintf(subtitle, sizeof(subtitle), "%d / %d   Hold D-Pad to scroll",
+   snprintf(subtitle, sizeof(subtitle), "%d/%d  S=State B=Battery",
          list->selected + 1, rom_count);
    dc_ui_draw_footer(subtitle);
 }
@@ -664,7 +696,7 @@ static void draw_settings_menu(dc_ui_list_t *list, const dc_settings_t *settings
    visible = dc_ui_list_visible_rows(&draw_list);
    row_w   = (int)layout.width - layout.margin_x * 2 - 12;
 
-   menu_frame_begin("Settings", "Left/Right: change   A: toggle   B: save & back");
+   menu_frame_begin("Settings", "D-Pad: navigate   Left/Right: change");
 
    y = draw_list.content_y;
    for (i = draw_list.scroll; i < SETTINGS_COUNT && i < draw_list.scroll + visible; i++)
@@ -685,26 +717,27 @@ static void draw_settings_menu(dc_ui_list_t *list, const dc_settings_t *settings
    dc_ui_draw_panel(layout.margin_x, status_y,
          (int)layout.width - layout.margin_x * 2, status_h - 4);
 
-   snprintf(line, sizeof(line), "VMU: %u   %ux%u   %s",
-         dc_vmu_device_count(), dc_video_width(), dc_video_height(),
-         dc_video_cable_name(dc_video_get_cable()));
-   dc_ui_draw_text(layout.margin_x + 8, status_y + 8, DC_UI_COLOR_TEXT_DIM, line);
+   snprintf(line, sizeof(line), "%ux%u  %s  VMU:%u",
+         dc_video_width(), dc_video_height(),
+         dc_video_cable_name(dc_video_get_cable()),
+         dc_vmu_device_count());
+   dc_ui_draw_text(layout.margin_x + 8, status_y + 8, DC_UI_COLOR_TEXT, line);
 
-   snprintf(line, sizeof(line), "Config: %s", DC_SETTINGS_PATH);
-   dc_ui_draw_text(layout.margin_x + 8, status_y + 24, DC_UI_COLOR_TEXT_DIM, line);
+   snprintf(line, sizeof(line), "%s", DC_SETTINGS_PATH);
+   dc_ui_draw_text(layout.margin_x + 8, status_y + 24, DC_UI_COLOR_TEXT, line);
 
    if (rom_path)
    {
       snprintf(line, sizeof(line), "State: %s   Battery: %s",
             dc_saves_state_exists(rom_path) ? "yes" : "no",
             dc_saves_flash_exists(rom_path) ? "yes" : "no");
-      dc_ui_draw_text(layout.margin_x + 8, status_y + 40, DC_UI_COLOR_TEXT_DIM, line);
+      dc_ui_draw_text(layout.margin_x + 8, status_y + 40, DC_UI_COLOR_TEXT, line);
    }
 
    if (settings_saved_flash > 0)
-      snprintf(footer, sizeof(footer), "Settings saved");
+      snprintf(footer, sizeof(footer), "Settings saved!");
    else
-      snprintf(footer, sizeof(footer), "Start+Y/X state   L/R battery (in-game)");
+      snprintf(footer, sizeof(footer), "A: toggle   B/Start: save & back");
    dc_ui_draw_footer(footer);
 }
 
@@ -853,17 +886,8 @@ void menu_settings_for_rom(const char *rom_path)
 
    if (dirty)
    {
-      unsigned flash;
-
       dc_settings_save(settings);
-      for (flash = 0; flash < 45; flash++)
-      {
-         settings_saved_flash = 45 - flash;
-         draw_settings_menu(&list, settings, rom_path);
-         dc_ui_present(true);
-         thd_sleep(16);
-      }
-      settings_saved_flash = 0;
+      settings_saved_flash = 45;
    }
 
    dc_video_menu_end();
@@ -931,7 +955,7 @@ static void draw_pause_menu(dc_ui_list_t *list, const char *rom_path)
    hint_y = list->content_y + list->content_h - list->row_h - 2;
    dc_ui_draw_hint(hint_y, pause_hints[list->selected]);
 
-   snprintf(footer, sizeof(footer), "B: resume   Start also resumes");
+   snprintf(footer, sizeof(footer), "A: select   B/Start: resume");
    dc_ui_draw_footer(footer);
 }
 

@@ -7,14 +7,15 @@
 #include <stdint.h>
 
 /* ARGB1555 theme colors */
-#define DC_UI_COLOR_BG       0x0000u
-#define DC_UI_COLOR_HEADER   0x1084u
-#define DC_UI_COLOR_PANEL    0x2104u
-#define DC_UI_COLOR_BORDER   0x5AD6u
-#define DC_UI_COLOR_ACCENT   0xA108u
-#define DC_UI_COLOR_SELECTED 0x294Au
-#define DC_UI_COLOR_TEXT_DIM 0
-#define DC_UI_COLOR_TEXT     1
+#define DC_UI_COLOR_BG         0x0000u
+#define DC_UI_COLOR_HEADER     0x18C7u
+#define DC_UI_COLOR_PANEL      0x294Au
+#define DC_UI_COLOR_BORDER     0x5AD6u
+#define DC_UI_COLOR_ACCENT     0xC208u
+#define DC_UI_COLOR_SELECTED   0x318Cu
+#define DC_UI_COLOR_TEXT_DIM   0
+#define DC_UI_COLOR_TEXT       1
+#define DC_UI_COLOR_HIGHLIGHT  0x7BE0u
 
 typedef struct dc_ui_layout
 {
