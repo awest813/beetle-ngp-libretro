@@ -15,3 +15,5 @@ dreamcast/IP.BIN
 dreamcast/1ST_READ.BIN
 dreamcast/beetlengp.bin
 
+# IDE / editor
+.vscode/pro-deployer.json
